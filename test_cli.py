@@ -24,4 +24,4 @@ class TestCLI(BaseCLI):
 
 if __name__ == "__main__":
     cli = TestCLI()
-    cli.run() 
+    cli.run()
