@@ -4,7 +4,7 @@ A simple CLI example using pydantic-autocli.
 """
 
 from pydantic import BaseModel, Field
-from pydantic_autocli import BaseCLI, field
+from pydantic_autocli import BaseCLI
 
 class SimpleCLI(BaseCLI):
     class CommonArgs(BaseCLI.CommonArgs):
@@ -13,8 +13,8 @@ class SimpleCLI(BaseCLI):
 
     class GreetArgs(CommonArgs):
         # Arguments specific to 'greet' command
-        name: str = field("World", "--name", "-n")
-        count: int = field(1, "--count", "-c")
+        name: str = Field("World", l="--name", s="-n")
+        count: int = Field(1, l="--count", s="-c")
 
     def run_greet(self, args):
         """Run the greet command"""
@@ -26,15 +26,16 @@ class SimpleCLI(BaseCLI):
 
     class FileArgs(CommonArgs):
         # Arguments specific to 'file' command
-        filename: str = field(..., "--file", "-f")
-        write_mode: bool = field(False, "--write", "-w")
+        filename: str = Field(..., l="--file", s="-f")
+        write_mode: bool = Field(False, l="--write", s="-w")
+        mode: str = Field("text", l="--mode", s="-m", choices=["text", "binary", "append"])
 
     def run_file(self, args):
         """Run the file command"""
         if args.write_mode:
             with open(args.filename, 'w') as f:
                 f.write("Hello from pydantic-autocli!\n")
-            print(f"Wrote to file: {args.filename}")
+            print(f"Wrote to file: {args.filename} in {args.mode} mode")
         else:
             try:
                 with open(args.filename, 'r') as f:

@@ -5,13 +5,13 @@ Run using: python test_cli.py greet -n "Test User" -c 2 --verbose
 """
 
 from pydantic import BaseModel, Field
-from pydantic_autocli import BaseCLI, field
+from pydantic_autocli import BaseCLI
 
 class TestCLI(BaseCLI):
     class GreetArgs(BaseCLI.CommonArgs):
-        name: str = field("World", "--name", "-n")
-        count: int = field(1, "--count", "-c")
-        verbose: bool = field(False, "--verbose")
+        name: str = Field("World", l="--name", s="-n")
+        count: int = Field(1, l="--count", s="-c")
+        verbose: bool = Field(False, l="--verbose")
 
     def run_greet(self, args):
         for _ in range(args.count):

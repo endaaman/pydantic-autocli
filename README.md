@@ -12,7 +12,7 @@ pip install pydantic-autocli
 
 ```python
 from pydantic import BaseModel, Field
-from pydantic_autocli import BaseCLI, field
+from pydantic_autocli import BaseCLI
 
 class MyCLI(BaseCLI):
     class CommonArgs(BaseCLI.CommonArgs):
@@ -21,8 +21,8 @@ class MyCLI(BaseCLI):
 
     class FooArgs(CommonArgs):
         # Arguments specific to 'foo' command
-        name: str = field(..., "--name", "-n")
-        count: int = field(1, "--count", "-c")
+        name: str = Field(..., l="--name", s="-n")
+        count: int = Field(1, l="--count", s="-c")
 
     def run_foo(self, args):
         """Run the foo command"""
@@ -32,11 +32,12 @@ class MyCLI(BaseCLI):
 
     class BarArgs(CommonArgs):
         # Arguments specific to 'bar' command
-        file: str = field(..., "--file", "-f")
+        file: str = Field(..., l="--file", s="-f")
+        mode: str = Field("read", l="--mode", s="-m", choices=["read", "write", "append"])
 
     def run_bar(self, args):
         """Run the bar command"""
-        print(f"Running bar with file={args.file}")
+        print(f"Running bar with file={args.file}, mode={args.mode}")
         if args.verbose:
             print("Verbose mode enabled")
 
@@ -49,10 +50,23 @@ if __name__ == "__main__":
 
 - Automatically generate CLI commands from class methods
 - Map Pydantic model fields to CLI arguments
-- Support for short and long argument formats
+- Customize CLI arguments with extended Field options:
+  - `l`: Long form argument (e.g., `l="--name"`)
+  - `s`: Short form argument (e.g., `s="-n"`)
+  - `choices`: List of allowed values (e.g., `choices=["read", "write", "append"]`)
 - Automatically handle help text generation
 - Support for common arguments across all commands
 - Support for async commands
+
+## Extended Field Parameters
+
+The library extends Pydantic's Field with the following CLI-specific parameters:
+
+| Parameter | Description | Example |
+|-----------|-------------|---------|
+| `l` | Long form CLI argument | `Field(..., l="--output-dir")` |
+| `s` | Short form CLI argument | `Field(..., s="-o")` |
+| `choices` | Allowed values for the argument | `Field("read", choices=["read", "write"])` |
 
 ## License
 

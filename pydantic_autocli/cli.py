@@ -19,13 +19,6 @@ def snake_to_kebab(s):
     return s.replace('_','-')
 
 
-def field(default_value, long_arg, short_arg=None):
-    if short_arg:
-        cli = (long_arg, short_arg)
-    else:
-        cli = (long_arg, )
-    return Field(default_value, cli=cli)
-
 primitive2type = {
     'string': str,
     'number': float,
