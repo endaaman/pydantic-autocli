@@ -4,12 +4,12 @@ Direct test script for type annotations without unittest.
 """
 
 from pydantic import BaseModel, Field
-from pydantic_autocli import BaseCLI
+from pydantic_autocli import AutoCLI
 
 def test_type_annotations():
     print("\n=== Testing Type Annotations ===")
     
-    class TestCLI(BaseCLI):
+    class TestCLI(AutoCLI):
         class CustomArgs(BaseModel):
             value: int = Field(42, json_schema_extra={"l": "--value", "s": "-v"})
         
@@ -34,7 +34,7 @@ def test_type_annotations():
 def test_user_pattern():
     print("\n=== Testing User Pattern ===")
     
-    class UserCLI(BaseCLI):
+    class UserCLI(AutoCLI):
         class BarArgs(BaseModel):
             a: int = Field(123, json_schema_extra={"l": "--a", "s": "-a"})
         
