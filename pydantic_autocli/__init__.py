@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 from .cli import AutoCLI, snake_to_pascal, snake_to_kebab
+import logging
 
 def param(default_value, *, s=None, l=None, choices=None, **kwargs):
     """Create a Field object with CLI-specific parameters.
@@ -24,11 +25,21 @@ def param(default_value, *, s=None, l=None, choices=None, **kwargs):
     
     return Field(default_value, **kwargs)
 
+def set_log_level(level):
+    """Set the log level for pydantic-autocli.
+    
+    Args:
+        level: A logging level (e.g., logging.DEBUG, logging.INFO)
+    """
+    logger = logging.getLogger("pydantic_autocli")
+    logger.setLevel(level)
+
 __all__ = [
     "AutoCLI", 
     "BaseModel", 
     "Field", 
     "param",
+    "set_log_level",
 ]
 
 

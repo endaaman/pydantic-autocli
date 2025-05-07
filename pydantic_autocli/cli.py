@@ -17,7 +17,8 @@ handler = logging.StreamHandler()
 formatter = logging.Formatter('%(levelname)s - %(message)s')
 handler.setFormatter(formatter)
 logger.addHandler(handler)
-logger.setLevel(logging.DEBUG)
+# デフォルトではログを出さないようにする（WARNING以上のみ表示）
+logger.setLevel(logging.WARNING)
 
 def snake_to_pascal(s):
     """Convert snake_case string to PascalCase."""
