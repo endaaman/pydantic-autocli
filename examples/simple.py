@@ -13,8 +13,8 @@ class SimpleCLI(BaseCLI):
 
     class GreetArgs(CommonArgs):
         # Arguments specific to 'greet' command
-        name: str = Field("World", l="--name", s="-n")
-        count: int = Field(1, l="--count", s="-c")
+        name: str = Field("World", json_schema_extra={"l": "--name", "s": "-n"})
+        count: int = Field(1, json_schema_extra={"l": "--count", "s": "-c"})
 
     def run_greet(self, args):
         """Run the greet command"""
@@ -26,9 +26,9 @@ class SimpleCLI(BaseCLI):
 
     class FileArgs(CommonArgs):
         # Arguments specific to 'file' command
-        filename: str = Field(..., l="--file", s="-f")
-        write_mode: bool = Field(False, l="--write", s="-w")
-        mode: str = Field("text", l="--mode", s="-m", choices=["text", "binary", "append"])
+        filename: str = Field(..., json_schema_extra={"l": "--file", "s": "-f"})
+        write_mode: bool = Field(False, json_schema_extra={"l": "--write", "s": "-w"})
+        mode: str = Field("text", json_schema_extra={"l": "--mode", "s": "-m", "choices": ["text", "binary", "append"]})
 
     def run_file(self, args):
         """Run the file command"""

@@ -4,7 +4,8 @@ import re
 from string import capwords
 import inspect
 import asyncio
-from typing import Callable, Type, get_type_hints
+import typing
+from typing import Callable, Type, get_type_hints, Optional, Dict, Any
 import argparse
 
 from pydantic import BaseModel, Field
@@ -31,19 +32,39 @@ def register_cls_to_parser(cls, parser):
     if VERBOSE:
         print(cls)
     replacer = {}
-    for key, prop in cls.schema()['properties'].items():
+    
+    # Use model_json_schema for pydantic v2 compatibility
+    schema_func = getattr(cls, "model_json_schema", None) or cls.schema
+    schema = schema_func()
+    properties = schema.get("properties", {})
+    
+    for key, prop in properties.items():
         if VERBOSE:
             print('Name: ', key)
             print('Prop:', prop)
 
+        # Default snake-case conversion for command line args
         snake_key = '--' + key.replace('_', '-')
+        
+        # Check for custom CLI args in json_schema_extra or directly in prop
+        json_schema_extra = prop.get('json_schema_extra', {})
+        
+        # First check direct properties (for backward compatibility)
         if 'l' in prop:
             snake_key = prop['l']
             replacer[snake_key[2:].replace('-', '_')] = key
+        # Then check json_schema_extra (preferred for v2)
+        elif 'l' in json_schema_extra:
+            snake_key = json_schema_extra['l']
+            replacer[snake_key[2:].replace('-', '_')] = key
 
         args = [snake_key]
+        
+        # Check for short form in either location
         if 's' in prop:
             args.append(prop['s'])
+        elif 's' in json_schema_extra:
+            args.append(json_schema_extra['s'])
 
         kwargs = {}
         if 'description' in prop:
@@ -72,8 +93,11 @@ def register_cls_to_parser(cls, parser):
                 kwargs['nargs'] = '*'
             kwargs['type'] = primitive2type[prop['items']['type']]
 
+        # Check for choices in either location
         if 'choices' in prop:
             kwargs['choices'] = prop['choices']
+        elif 'choices' in json_schema_extra:
+            kwargs['choices'] = json_schema_extra['choices']
 
         if VERBOSE:
             print('args', args)
@@ -126,28 +150,69 @@ class BaseCLI:
             return r
         return alt_runner
 
-    def _get_args_class_for_method(self, method_name):
+    def _get_type_annotation_for_method(self, method_key) -> Optional[Type[BaseModel]]:
+        """Extract type annotation for the run_* method parameter (other than self)"""
+        method = getattr(self, method_key)
+        
+        try:
+            # Get signature parameters
+            params = list(inspect.signature(method).parameters.values())
+            if len(params) <= 1:
+                return None  # No parameters besides self
+            
+            param_name = params[1].name  # First param after self
+            
+            # Get type annotation from source
+            source = inspect.getsource(method)
+            
+            # Look for annotations like "def run_xxx(self, arg: SomeClass):"
+            annotation_pattern = rf"def\s+{method_key}\s*\(\s*self\s*,\s*{param_name}\s*:\s*([A-Za-z0-9_\.]+)"
+            match = re.search(annotation_pattern, source)
+            
+            if match:
+                # Extract the class name from annotation
+                class_name = match.group(1).strip()
+                
+                # Get class from globals or instance attributes
+                for attr_name in dir(self.__class__):
+                    attr = getattr(self.__class__, attr_name)
+                    if inspect.isclass(attr) and attr.__name__ == class_name:
+                        if issubclass(attr, BaseModel):
+                            return attr
+            
+            # Fallback to get_type_hints, but evaluate postponed annotations
+            # to handle ForwardRefs or string annotations
+            type_hints = get_type_hints(method, globalns=globals())
+            
+            if param_name in type_hints:
+                param_type = type_hints[param_name]
+                if inspect.isclass(param_type) and issubclass(param_type, BaseModel):
+                    return param_type
+                
+        except Exception as e:
+            if VERBOSE:
+                print(f"Error getting type annotation: {e}")
+        
+        return None
+    
+    def _get_args_class_for_method(self, method_name) -> Type[BaseModel]:
         """Get the appropriate args class for a method based on type annotation or naming convention"""
-        method = getattr(self, method_name)
+        # First, check for type annotation in the method
+        annotation_cls = self._get_type_annotation_for_method(method_name)
+        if annotation_cls is not None:
+            return annotation_cls
         
-        # Priority 1: Check for type annotation
-        type_hints = get_type_hints(method)
-        
-        # Check for type annotation on the second parameter (first is 'self')
-        params = list(inspect.signature(method).parameters.values())
-        if len(params) > 1 and params[1].name in type_hints:
-            arg_type = type_hints[params[1].name]
-            if inspect.isclass(arg_type) and issubclass(arg_type, BaseModel):
-                return arg_type
-        
-        # Priority 2: Look for a class named according to convention
+        # If no type annotation, look for class named according to convention
         command_name = re.match(r'^run_(.*)$', method_name)[1]
         args_class_name = snake_to_pascal(command_name) + 'Args'
-        args_class = getattr(self.__class__, args_class_name, None)
-        if args_class is not None:
-            return args_class
         
-        # Priority 3: Fall back to CommonArgs
+        # Search for the class as a direct attribute of the CLI class
+        if hasattr(self.__class__, args_class_name):
+            attr = getattr(self.__class__, args_class_name)
+            if inspect.isclass(attr) and issubclass(attr, BaseModel):
+                return attr
+        
+        # Fall back to CommonArgs
         return self.default_args_class
 
     def __init__(self):
