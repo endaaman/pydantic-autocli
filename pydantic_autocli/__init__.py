@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from .cli import BaseCLI as AutoCLI, snake_to_pascal, snake_to_kebab
+from .cli import AutoCLI, snake_to_pascal, snake_to_kebab
 
 def param(default_value, *, s=None, l=None, choices=None, **kwargs):
     """Create a Field object with CLI-specific parameters.

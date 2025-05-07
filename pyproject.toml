@@ -35,7 +35,7 @@ dev = [
 
 [tool.taskipy.tasks]
 test = "pytest"
-example = "python examples/simple.py"
+example = "python examples/example.py"
 clean = "rm -rf build/ dist/ *.egg-info/ __pycache__/ && find . -name '*.pyc' -delete && find . -name '__pycache__' -delete"
 
 [dependency-groups]

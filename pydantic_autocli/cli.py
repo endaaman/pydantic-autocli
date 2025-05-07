@@ -7,9 +7,17 @@ import asyncio
 import typing
 from typing import Callable, Type, get_type_hints, Optional, Dict, Any
 import argparse
+import logging
 
 from pydantic import BaseModel, Field
 
+# Configure logging
+logger = logging.getLogger("pydantic_autocli")
+handler = logging.StreamHandler()
+formatter = logging.Formatter('%(levelname)s - %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
 
 def snake_to_pascal(s):
     """Convert snake_case string to PascalCase."""
@@ -30,8 +38,6 @@ primitive2type = {
     'integer': int,
 }
 
-VERBOSE = False
-
 
 def register_cls_to_parser(cls, parser):
     """Register a Pydantic model class to an argparse parser.
@@ -46,8 +52,7 @@ def register_cls_to_parser(cls, parser):
     Returns:
         dict: A mapping of CLI argument names to model field names
     """
-    if VERBOSE:
-        print(cls)
+    logger.debug(f"Registering class {cls.__name__} to parser")
     replacer = {}
     
     # Use model_json_schema for pydantic v2 compatibility
@@ -56,9 +61,8 @@ def register_cls_to_parser(cls, parser):
     properties = schema.get("properties", {})
     
     for key, prop in properties.items():
-        if VERBOSE:
-            print('Name: ', key)
-            print('Prop:', prop)
+        logger.debug(f"Processing property: {key}")
+        logger.debug(f"Property details: {prop}")
 
         # Default snake-case conversion for command line args
         snake_key = '--' + key.replace('_', '-')
@@ -116,10 +120,8 @@ def register_cls_to_parser(cls, parser):
         elif 'choices' in json_schema_extra:
             kwargs['choices'] = json_schema_extra['choices']
 
-        if VERBOSE:
-            print('args', args)
-            print('kwargs', kwargs)
-            print()
+        logger.debug(f"Parser arguments: {args}")
+        logger.debug(f"Parser kwargs: {kwargs}")
 
         parser.add_argument(*args, **kwargs)
     return replacer
@@ -198,45 +200,82 @@ class AutoCLI:
         """
         method = getattr(self, method_key)
         
+        logger.debug(f"Trying to get type annotation for method {method_key}")
+        
         try:
             # Get signature parameters
             params = list(inspect.signature(method).parameters.values())
             if len(params) <= 1:
+                logger.debug(f"Method {method_key} has no parameters besides self")
                 return None  # No parameters besides self
             
             param_name = params[1].name  # First param after self
+            logger.debug(f"Parameter name: {param_name}")
             
             # Get type annotation from source
             source = inspect.getsource(method)
+            logger.debug(f"Method source: {source}")
             
             # Look for annotations like "def run_xxx(self, arg: SomeClass):"
+            # Improved pattern to better handle whitespace and capture class name more precisely
             annotation_pattern = rf"def\s+{method_key}\s*\(\s*self\s*,\s*{param_name}\s*:\s*([A-Za-z0-9_\.]+)"
             match = re.search(annotation_pattern, source)
             
             if match:
                 # Extract the class name from annotation
                 class_name = match.group(1).strip()
+                logger.debug(f"Found annotation class name: {class_name}")
                 
-                # Get class from globals or instance attributes
+                # First try to find the class directly on the instance's class
+                if hasattr(self.__class__, class_name):
+                    attr = getattr(self.__class__, class_name)
+                    if inspect.isclass(attr) and issubclass(attr, BaseModel):
+                        logger.debug(f"Found class {class_name} directly")
+                        return attr
+                
+                # Then search through all class attributes
                 for attr_name in dir(self.__class__):
                     attr = getattr(self.__class__, attr_name)
                     if inspect.isclass(attr) and attr.__name__ == class_name:
                         if issubclass(attr, BaseModel):
+                            logger.debug(f"Successfully found class {class_name} for {method_key}")
                             return attr
+                        else:
+                            logger.debug(f"Found class {class_name} but it doesn't subclass BaseModel")
+                
+                logger.debug(f"Couldn't find class {class_name} in {self.__class__.__name__}")
+            else:
+                logger.debug(f"No annotation match found in source code for {method_key}")
             
             # Fallback to get_type_hints, but evaluate postponed annotations
             # to handle ForwardRefs or string annotations
-            type_hints = get_type_hints(method, globalns=globals())
+            try:
+                # First try with globals (common case)
+                type_hints = get_type_hints(method, globalns=globals())
+                logger.debug(f"Type hints for {method_key}: {type_hints}")
+            except Exception as e:
+                logger.debug(f"Error getting type hints with globals: {e}")
+                # If that fails, try with locals from class context
+                try:
+                    locals_dict = {name: getattr(self.__class__, name) for name in dir(self.__class__)}
+                    type_hints = get_type_hints(method, globalns=globals(), localns=locals_dict)
+                    logger.debug(f"Type hints (with locals) for {method_key}: {type_hints}")
+                except Exception as e2:
+                    logger.debug(f"Error getting type hints with locals: {e2}")
+                    type_hints = {}
             
             if param_name in type_hints:
                 param_type = type_hints[param_name]
                 if inspect.isclass(param_type) and issubclass(param_type, BaseModel):
+                    logger.debug(f"Found type hint {param_type.__name__} for {method_key}")
                     return param_type
+                else:
+                    logger.debug(f"Type {param_type} is not a BaseModel subclass")
                 
         except Exception as e:
-            if VERBOSE:
-                print(f"Error getting type annotation: {e}")
+            logger.debug(f"Error getting type annotation for {method_key}: {e}")
         
+        logger.debug(f"No type annotation found for method {method_key}")
         return None
     
     def _get_args_class_for_method(self, method_name) -> Type[BaseModel]:
@@ -247,22 +286,42 @@ class AutoCLI:
         2. Naming convention (CommandArgs class for run_command method)
         3. Fall back to CommonArgs
         """
+        logger.debug(f"Getting args class for method {method_name}")
+            
         # First, check for type annotation in the method
         annotation_cls = self._get_type_annotation_for_method(method_name)
         if annotation_cls is not None:
+            logger.debug(f"Found annotation class for {method_name}: {annotation_cls.__name__}")
             return annotation_cls
         
         # If no type annotation, look for class named according to convention
         command_name = re.match(r'^run_(.*)$', method_name)[1]
-        args_class_name = snake_to_pascal(command_name) + 'Args'
         
-        # Search for the class as a direct attribute of the CLI class
-        if hasattr(self.__class__, args_class_name):
-            attr = getattr(self.__class__, args_class_name)
-            if inspect.isclass(attr) and issubclass(attr, BaseModel):
-                return attr
+        # Try multiple naming conventions:
+        # 1. PascalCase + Args (e.g., FileArgs for run_file)
+        # 2. Command-specific custom class (e.g., CustomArgs for a specific command)
+        args_class_names = [
+            snake_to_pascal(command_name) + 'Args',  # Standard convention
+            command_name.capitalize() + 'Args',      # Simple capitalization
+            'CustomArgs'                             # Common custom name
+        ]
+        
+        logger.debug(f"Looking for convention-based classes: {args_class_names}")
+        
+        # Search for any of the possible class names
+        for args_class_name in args_class_names:
+            if hasattr(self.__class__, args_class_name):
+                attr = getattr(self.__class__, args_class_name)
+                if inspect.isclass(attr) and issubclass(attr, BaseModel):
+                    logger.debug(f"Found convention-based class {args_class_name}")
+                    return attr
+                else:
+                    logger.debug(f"Found attribute {args_class_name} but it's not a BaseModel subclass")
+            else:
+                logger.debug(f"No attribute named {args_class_name} found in {self.__class__.__name__}")
         
         # Fall back to CommonArgs
+        logger.debug(f"Falling back to default_args_class for {method_name}")
         return self.default_args_class
 
     def __init__(self):
@@ -273,10 +332,14 @@ class AutoCLI:
         - Subparsers for each command
         - Method to args class mapping
         """
+        logger.debug(f"Initializing AutoCLI for class {self.__class__.__name__}")
+            
         self.a = None
         self.runners = {}
         self.function = None
         self.default_args_class = getattr(self.__class__, 'CommonArgs', self.CommonArgs)
+        
+        logger.debug(f"Default args class: {self.default_args_class.__name__}")
 
         self.main_parser = argparse.ArgumentParser(add_help=False)
         sub_parsers = self.main_parser.add_subparsers()
@@ -284,16 +347,24 @@ class AutoCLI:
         # Dictionary to store method name -> args class mapping
         self.method_args_mapping = {}
         
-        for key in dir(self):
+        # List all methods that start with run_
+        run_methods = [key for key in dir(self) if key.startswith('run_')]
+        logger.debug(f"Found {len(run_methods)} run methods: {run_methods}")
+        
+        for key in run_methods:
             m = re.match(r'^run_(.*)$', key)
             if not m:
                 continue
             name = m[1]
+            
+            logger.debug(f"Processing command '{name}' from method {key}")
 
             subcommand_name = snake_to_kebab(name)
             
             # Get the appropriate args class for this method
             args_class = self._get_args_class_for_method(key)
+            
+            logger.debug(f"For command '{name}', using args class: {args_class.__name__}")
             
             # Store the mapping for later use
             self.method_args_mapping[name] = args_class
@@ -302,6 +373,10 @@ class AutoCLI:
             sub_parser = sub_parsers.add_parser(subcommand_name, parents=[self.main_parser])
             replacer = register_cls_to_parser(args_class, sub_parser)
             sub_parser.set_defaults(__function=name, __cls=args_class, __replacer=replacer)
+            
+            logger.debug(f"Registered parser for command '{subcommand_name}' with replacer: {replacer}")
+                
+        logger.debug(f"Final method_args_mapping: {[(k, v.__name__) for k, v in self.method_args_mapping.items()]}")
 
     def run(self):
         """Run the CLI application.
@@ -312,14 +387,24 @@ class AutoCLI:
         3. Executes the command with parsed arguments
         4. Handles async commands
         """
+        logger.debug("Starting AutoCLI.run()")
+        logger.debug(f"Available commands: {[k for k in dir(self) if k.startswith('run_')]}")
+            
         self.raw_args = self.main_parser.parse_args()
+        logger.debug(f"Parsed args: {self.raw_args}")
+            
         if not hasattr(self.raw_args, '__function'):
+            logger.debug("No function specified, showing help")
             self.main_parser.print_help()
             exit(0)
 
         args_dict = self.raw_args.__dict__
         name = args_dict['__function']
         replacer = args_dict['__replacer']
+        args_cls = args_dict['__cls']
+        
+        logger.debug(f"Running command '{name}' with class {args_cls.__name__}")
+        logger.debug(f"Replacer mapping: {replacer}")
 
         args_params = {}
         for k, v in args_dict.items():
@@ -328,10 +413,21 @@ class AutoCLI:
             if k in replacer:
                 k = replacer[k]
             args_params[k] = v
+            
+        logger.debug(f"Args params for parsing: {args_params}")
 
-        args = args_dict['__cls'].parse_obj(args_params)
+        try:
+            args = args_cls.parse_obj(args_params)
+            logger.debug(f"Created args instance: {args}")
+        except Exception as e:
+            logger.error(f"Failed to create args instance: {e}")
+            logger.debug(f"Args class: {args_cls}")
+            logger.debug(f"Args params: {args_params}")
+            exit(1)
 
         function = getattr(self, 'run_' + name)
+        logger.debug(f"Function to call: {function.__name__}")
+        logger.debug(f"Function signature: {inspect.signature(function)}")
 
         self.a = args
 
@@ -345,13 +441,15 @@ class AutoCLI:
         else:
             print('No args')
 
-        if inspect.iscoroutinefunction(function):
-            r = asyncio.run(function(args))
-        else:
-            r =  function(args)
-        print(f'Done <{name}>')
-
-        # cls.parse_obj(parser.parse_args().__dict__)
+        try:
+            if inspect.iscoroutinefunction(function):
+                r = asyncio.run(function(args))
+            else:
+                r =  function(args)
+            print(f'Done <{name}>')
+        except Exception as e:
+            logger.error(f"ERROR in command execution: {e}")
+            logger.debug("", exc_info=True)
 
 
 if __name__ == '__main__':

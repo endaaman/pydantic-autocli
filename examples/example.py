@@ -16,7 +16,7 @@ class SimpleCLI(AutoCLI):
         name: str = param("World", l="--name", s="-n")
         count: int = param(1, l="--count", s="-c")
 
-    def run_greet(self, args):
+    def run_greet(self, args:GreetArgs):
         """Run the greet command"""
         for _ in range(args.count):
             print(f"Hello, {args.name}!")
@@ -24,28 +24,16 @@ class SimpleCLI(AutoCLI):
         if args.verbose:
             print(f"Greeted {args.name} {args.count} times")
 
-    class FileArgs(CommonArgs):
+    class CustomArgs(CommonArgs):
         # Arguments specific to 'file' command
         filename: str = param(..., l="--file", s="-f")
         write_mode: bool = param(False, l="--write", s="-w")
         mode: str = param("text", l="--mode", s="-m", choices=["text", "binary", "append"])
 
-    def run_file(self, args):
+    def run_file(self, args:CustomArgs):
         """Run the file command"""
-        if args.write_mode:
-            with open(args.filename, 'w') as f:
-                f.write("Hello from pydantic-autocli!\n")
-            print(f"Wrote to file: {args.filename} in {args.mode} mode")
-        else:
-            try:
-                with open(args.filename, 'r') as f:
-                    content = f.read()
-                print(f"File content: {content.strip()}")
-            except FileNotFoundError:
-                print(f"File not found: {args.filename}")
-        
-        if args.verbose:
-            print(f"File operation complete on {args.filename}")
+        assert args.mode == "text"
+        print(f"File: {args.filename}, Mode: {args.mode}, Write: {args.write_mode}")
 
 if __name__ == "__main__":
     cli = SimpleCLI()
