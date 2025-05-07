@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pydantic-autocli"
+version = "0.1.0"
+description = "Automatically generate CLI from Pydantic models"
+readme = "README.md"
+requires-python = ">=3.7"
+license = {file = "LICENSE"}
+authors = [
+    {name = "Ken Enda", email = "ken@endaaman.com"},
+]
+dependencies = [
+    "pydantic>=1.8.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/endaaman/pydantic-autocli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["pydantic_autocli"]
