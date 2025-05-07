@@ -36,6 +36,15 @@ class SimpleCLI(AutoCLI):
         print(type(a))
         print(f"File: {a.filename}, Mode: {a.mode}, Write: {a.write_mode}")
 
+    class FooArgs(CommonArgs):
+        pass
+
+    class BarArgs(CommonArgs):
+        pass
+
+    def run_bar(self, a:FooArgs):
+        pass
+
 if __name__ == "__main__":
     cli = SimpleCLI()
     cli.run()

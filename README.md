@@ -107,10 +107,41 @@ class MyCLI(AutoCLI):
         return False  # Indicates failure (exit code 1)
         # Or return a specific exit code: return args.code
 
+    class CustomArgs(BaseModel):
+        value: int = param(42, l="--value", s="-v")
+        flag: bool = param(False, l="--flag", s="-f")
+    
+    # Use type annotation to specify args class
+    def run_command(self, args: CustomArgs):
+        print(f"Value: {args.value}")
+        if args.flag:
+            print("Flag is set")
+        return True
+
 if __name__ == "__main__":
     cli = MyCLI()
     cli.run()
-```
+
+### Direct Command-line Arguments
+
+You can also pass command-line arguments directly to the `run()` method, which is useful for programmatic CLI invocation or testing:
+
+```python
+cli = MyCLI()
+
+# These are equivalent:
+cli.run()  # Uses sys.argv by default
+cli.run(sys.argv)  # Explicitly pass sys.argv
+
+# Pass custom arguments
+cli.run(["program_name", "command", "--option1", "value1", "--flag"])
+
+# Useful for testing or embedding the CLI in larger applications
+def process_with_cli(filename, show_details=False):
+    args = ["program", "process", "--file", filename]
+    if show_details:
+        args.append("--verbose")
+    return cli.run(args)
 
 ### Command-line execution examples
 
@@ -199,6 +230,38 @@ class MyCLI(AutoCLI):
         if args.flag:
             print("Flag is set")
         return True
+        
+    # Async methods are also supported and automatically detected
+    class ProcessArgs(BaseModel):
+        file: str = param(..., l="--file", s="-f")
+        count: int = param(1, l="--count", s="-c")
+    
+    # Async command using type annotation
+    async def run_process(self, args: ProcessArgs):
+        import asyncio
+        print(f"Processing {args.file} {args.count} times")
+        for i in range(args.count):
+            await asyncio.sleep(0.5)
+            print(f"Iteration {i+1}/{args.count}")
+        return "Processing complete"
+```
+
+Async methods are automatically detected and properly executed using `asyncio.run()`. They follow the same argument resolution rules as regular methods, including naming conventions:
+
+```python
+class AsyncCLI(AutoCLI):
+    # Args class by naming convention
+    class FetchArgs(BaseModel):
+        url: str = param(..., l="--url", s="-u", description="URL to fetch")
+        timeout: int = param(30, l="--timeout", s="-t", description="Timeout in seconds")
+    
+    # Async command using naming convention
+    async def run_fetch(self, args):
+        import asyncio
+        print(f"Fetching {args.url} with timeout {args.timeout}s")
+        # Simulating network request
+        await asyncio.sleep(1) 
+        return f"Content from {args.url}"
 ```
 
 ### Resolution Priority
@@ -229,7 +292,18 @@ class MyCLI(AutoCLI):
         return True
 ```
 
-This command will use `CustomArgs` (from type annotation) instead of `CommandArgs` (from naming convention), with a warning about the detected conflict. It's generally recommended to avoid such conflicts for code clarity.
+This command will use `CustomArgs` (from type annotation) instead of `CommandArgs` (from naming convention), with a warning about the detected conflict:
+
+```
+Warning: Method 'run_command' has both a type annotation (CustomArgs) and a naming convention class (CommandArgs). The type annotation takes precedence.
+```
+
+This warning helps identify potential confusion in your CLI code structure. It's generally recommended to avoid such conflicts for code clarity by either:
+1. Using consistent naming conventions
+2. Removing the naming convention class when using type annotations
+3. Making the naming convention class and type annotation class the same
+
+The warning appears during the initialization of the CLI, so you'll see it when you create a CLI instance, not when running specific commands.
 
 ## Common Arguments Base Class
 

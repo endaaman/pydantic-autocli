@@ -327,13 +327,7 @@ class AutoCLI:
         """
         logger.debug(f"Getting args class for method {method_name}")
             
-        # First, check for type annotation in the method
-        annotation_cls = self._get_type_annotation_for_method(method_name)
-        if annotation_cls is not None:
-            logger.debug(f"Found annotation class for {method_name}: {annotation_cls.__name__}")
-            return annotation_cls
-        
-        # If no type annotation, look for class named according to convention
+        # Get the command name to check for naming convention classes
         command_name = re.match(r'^run_(.*)$', method_name)[1]
         
         # Try multiple naming conventions:
@@ -347,17 +341,42 @@ class AutoCLI:
         
         logger.debug(f"Looking for convention-based classes: {args_class_names}")
         
-        # Search for any of the possible class names
+        # Check if any naming convention classes exist
+        convention_class = None
         for args_class_name in args_class_names:
             if hasattr(self.__class__, args_class_name):
                 attr = getattr(self.__class__, args_class_name)
                 if inspect.isclass(attr) and issubclass(attr, BaseModel):
                     logger.debug(f"Found convention-based class {args_class_name}")
-                    return attr
+                    convention_class = attr
+                    break
                 else:
                     logger.debug(f"Found attribute {args_class_name} but it's not a BaseModel subclass")
             else:
                 logger.debug(f"No attribute named {args_class_name} found in {self.__class__.__name__}")
+        
+        # Check for type annotation in the method
+        annotation_cls = self._get_type_annotation_for_method(method_name)
+        
+        # Check for conflicts between naming convention and type annotation
+        if annotation_cls is not None:
+            logger.debug(f"Found annotation class for {method_name}: {annotation_cls.__name__}")
+            
+            # If both convention class and annotation class exist and are different, show warning
+            if convention_class is not None and annotation_cls != convention_class:
+                warning_msg = (
+                    f"Warning: Method '{method_name}' has both a type annotation ({annotation_cls.__name__}) "
+                    f"and a naming convention class ({convention_class.__name__}). "
+                    f"The type annotation takes precedence."
+                )
+                logger.warning(warning_msg)
+                print(warning_msg)
+                
+            return annotation_cls
+        
+        # If no type annotation but convention class exists, use it
+        if convention_class is not None:
+            return convention_class
         
         # Fall back to CommonArgs
         logger.debug(f"Falling back to default_args_class for {method_name}")
@@ -417,7 +436,7 @@ class AutoCLI:
                 
         logger.debug(f"Final method_args_mapping: {[(k, v.__name__) for k, v in self.method_args_mapping.items()]}")
 
-    def run(self):
+    def run(self, argv=None):
         """Run the CLI application.
         
         This method:
@@ -425,11 +444,18 @@ class AutoCLI:
         2. Finds the appropriate command and args class
         3. Executes the command with parsed arguments
         4. Handles async commands
+        
+        Args:
+            argv: Optional list of command line arguments. Defaults to sys.argv.
         """
         logger.debug("Starting AutoCLI.run()")
         logger.debug(f"Available commands: {[k for k in dir(self) if k.startswith('run_')]}")
+        
+        # Use provided argv or default to sys.argv
+        if argv is None:
+            argv = sys.argv
             
-        self.raw_args = self.main_parser.parse_args()
+        self.raw_args = self.main_parser.parse_args(argv[1:])
         logger.debug(f"Parsed args: {self.raw_args}")
             
         if not hasattr(self.raw_args, '__function'):

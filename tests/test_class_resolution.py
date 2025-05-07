@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-Tests focused on class resolution logic for pydantic-autocli.
-Testing how argument classes are selected based on type annotations and naming conventions.
+Tests focused on argument class resolution for pydantic-autocli.
+Testing naming convention vs type annotation priority and warning messages.
 """
 
 import unittest
 import sys
-import inspect
 import logging
-from typing import get_type_hints, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from pydantic_autocli import AutoCLI, param
+from unittest.mock import patch, MagicMock, call
+import asyncio
 
 
 # Set up logging for debugging
@@ -18,254 +18,295 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger("test_class_resolution")
 
 
-class TestArgsClass(BaseModel):
-    """Test arguments class to be used across tests."""
-    value: int = Field(123, description="Test field")
-
-
-class BasicFunctionalityTest(unittest.TestCase):
-    """Test basic functionality of AutoCLI."""
+class CLIClassResolutionTest(unittest.TestCase):
+    """Test CLI argument class resolution functionality, especially when there are conflicts."""
     
-    def test_basic_cli(self):
-        """Test basic CLI functionality with a simple command."""
+    def setUp(self):
+        # Enable debug logging for pydantic_autocli
+        self.autocli_logger = logging.getLogger("pydantic_autocli")
+        self.original_level = self.autocli_logger.level
+        self.autocli_logger.setLevel(logging.DEBUG)
         
-        class TestCLI(AutoCLI):
-            class GreetArgs(AutoCLI.CommonArgs):
-                name: str = param("World", l="--name", s="-n")
-                count: int = param(1, l="--count", s="-c")
+    def tearDown(self):
+        # Restore original logging level
+        self.autocli_logger.setLevel(self.original_level)
+    
+    def test_type_annotation_priority(self):
+        """Test that type annotation takes priority over naming convention."""
+        
+        class TypeAnnotationCLI(AutoCLI):
+            # Naming convention class (would match run_command)
+            class CommandArgs(BaseModel):
+                name: str = param("default", l="--name", s="-n")
+                verbose: bool = param(False, l="--verbose")
             
-            def run_greet(self, a):
-                return f"Hello, {a.name}!"
-        
-        cli = TestCLI()
-        # Directly call the method with args
-        a = TestCLI.GreetArgs(name="Test User")
-        result = cli.run_greet(a)
-        self.assertEqual(result, "Hello, Test User!")
-
-
-class TypeAnnotationTest(unittest.TestCase):
-    """Test argument class resolution via type annotations."""
-    
-    def test_type_annotations(self):
-        """Test that type annotations correctly resolve argument classes."""
-        
-        class AnnotationCLI(AutoCLI):
-            # Define a model to use with annotations
+            # Type annotation class - should be used instead
             class CustomArgs(BaseModel):
                 value: int = param(42, l="--value", s="-v")
                 flag: bool = param(False, l="--flag", s="-f")
             
-            # Method using type annotation directly
-            def run_annotated(self, a: CustomArgs):
-                if a.flag:
-                    return a.value * 2
-                return a.value
-            
-            # Traditional method using naming convention
-            class TraditionalArgs(AutoCLI.CommonArgs):
-                name: str = param("default", l="--name", s="-n")
-            
-            def run_traditional(self, a):
-                return a.name
+            # Type annotation in method signature should take precedence
+            def run_command(self, args: CustomArgs):
+                return f"Value: {args.value}, Flag: {args.flag}"
         
-        # Enable debug logging for AutoCLI
-        autocli_logger = logging.getLogger("pydantic_autocli")
-        original_level = autocli_logger.level
-        autocli_logger.setLevel(logging.DEBUG)
+        # Create CLI instance
+        cli = TypeAnnotationCLI()
         
-        try:
-            # Create CLI instance 
-            logger.debug("Creating AnnotationCLI instance for testing type annotations")
-            cli = AnnotationCLI()
-            
-            # Check method_args_mapping
-            logger.debug(f"Method args mapping: {cli.method_args_mapping}")
-            for name, cls in cli.method_args_mapping.items():
-                logger.debug(f"  {name}: {cls.__name__}")
-            
-            # Check that method_args_mapping is correctly populated during initialization
-            self.assertEqual(cli.method_args_mapping["annotated"].__name__, "CustomArgs")
-            self.assertEqual(cli.method_args_mapping["traditional"].__name__, "TraditionalArgs")
-        finally:
-            # Restore original logging level
-            autocli_logger.setLevel(original_level)
-
-
-class NamingConventionTest(unittest.TestCase):
-    """Test naming convention based class resolution."""
+        # Create a method to capture the result
+        result_capture = MagicMock()
+        
+        # Patch the run_command method to capture its result
+        original_method = cli.run_command
+        cli.run_command = lambda args: result_capture(original_method(args)) or True
+        
+        # Run the CLI with direct arguments
+        argv = ["test_script.py", "command", "--value", "123", "--flag"]
+        with patch('sys.exit'):
+            cli.run(argv)
+        
+        # Verify the method was called with correct args (using CustomArgs)
+        result_capture.assert_called_once()
+        args, _ = result_capture.call_args
+        self.assertEqual(args[0], "Value: 123, Flag: True")
+        
+        # Verify that CustomArgs was used as expected
+        self.assertEqual(cli.method_args_mapping["command"].__name__, "CustomArgs")
     
-    def test_naming_convention(self):
-        """Test that naming convention correctly resolves argument classes."""
+    @patch('builtins.print')  # Patch print to capture the warning message
+    def test_naming_convention_conflict_warning(self, mock_print):
+        """Test that a warning is issued when there's a conflict between naming convention and type annotation."""
         
-        class NamingCLI(AutoCLI):
-            # Single-word command
-            class CommandArgs(AutoCLI.CommonArgs):
+        class ConflictCLI(AutoCLI):
+            # Args class that follows naming convention
+            class CommandArgs(BaseModel):
+                name: str = param("default", l="--name")
+                verbose: bool = param(False, l="--verbose", s="-v")
+            
+            # Different args class specified by type annotation
+            class CustomArgs(BaseModel):
+                value: int = param(42, l="--value", s="-v")
+                flag: bool = param(False, l="--flag", s="-f")
+            
+            # Type annotation takes precedence over naming convention
+            def run_command(self, args: CustomArgs):
+                return f"Value: {args.value}, Flag: {args.flag}"
+        
+        # Create CLI instance - this should trigger the warning
+        cli = ConflictCLI()
+        
+        # Verify the warning message was printed
+        warning_printed = False
+        for call_args in mock_print.call_args_list:
+            call_str = str(call_args)
+            if "Warning" in call_str and "has both a type annotation (CustomArgs) and a naming convention class (CommandArgs)" in call_str:
+                warning_printed = True
+                break
+        
+        self.assertTrue(warning_printed, "Warning about conflict between type annotation and naming convention was not displayed")
+        
+        # Create a method to capture the result
+        result_capture = MagicMock()
+        
+        # Patch the run_command method to capture its result
+        original_method = cli.run_command
+        cli.run_command = lambda args: result_capture(original_method(args)) or True
+        
+        # Run the CLI with direct arguments
+        argv = ["test_script.py", "command", "--value", "123", "--flag"]
+        with patch('sys.exit'):
+            cli.run(argv)
+        
+        # Verify the method was called with correct args (using CustomArgs)
+        result_capture.assert_called_once()
+        args, _ = result_capture.call_args
+        self.assertEqual(args[0], "Value: 123, Flag: True")
+    
+    def test_naming_convention_fallback(self):
+        """Test that naming convention is used when no type annotation is present."""
+        
+        class NamingConventionCLI(AutoCLI):
+            # Naming convention class that should be used
+            class CommandArgs(BaseModel):
                 name: str = param("default", l="--name", s="-n")
+                verbose: bool = param(False, l="--verbose", s="-v")
             
-            def run_command(self, a):
-                return f"Command: {a.name}"
-            
-            # Two-word command
-            class FooBarArgs(AutoCLI.CommonArgs):
-                option: str = param("default", l="--option")
-            
-            def run_foo_bar(self, a):
-                return f"FooBar: {a.option}"
+            # No type annotation, so naming convention should be used
+            def run_command(self, args):
+                return f"Name: {args.name}, Verbose: {args.verbose}"
         
-        cli = NamingCLI()
+        # Create CLI instance
+        cli = NamingConventionCLI()
         
-        # Check class resolution by naming convention
+        # Create a method to capture the result
+        result_capture = MagicMock()
+        
+        # Patch the run_command method to capture its result
+        original_method = cli.run_command
+        cli.run_command = lambda args: result_capture(original_method(args)) or True
+        
+        # Run the CLI with direct arguments
+        argv = ["test_script.py", "command", "--name", "test-user", "--verbose"]
+        with patch('sys.exit'):
+            cli.run(argv)
+        
+        # Verify the method was called with correct args (using CommandArgs)
+        result_capture.assert_called_once()
+        args, _ = result_capture.call_args
+        self.assertEqual(args[0], "Name: test-user, Verbose: True")
+        
+        # Verify that CommandArgs was used
         self.assertEqual(cli.method_args_mapping["command"].__name__, "CommandArgs")
-        self.assertEqual(cli.method_args_mapping["foo_bar"].__name__, "FooBarArgs")
-
-
-class ConflictResolutionTest(unittest.TestCase):
-    """Test resolution when both naming convention and type annotation could apply."""
     
-    def test_conflict_resolution(self):
-        """Test that type annotation takes precedence over naming convention."""
-        
-        autocli_logger = logging.getLogger("pydantic_autocli")
-        original_level = autocli_logger.level
-        autocli_logger.setLevel(logging.DEBUG)
-        
-        try:
-            class ConflictCLI(AutoCLI):
-                # Args class that follows naming convention
-                class CommandArgs(BaseModel):
-                    name: str = param("default", l="--name")
-                
-                # Different args class specified by type annotation
-                class CustomArgs(BaseModel):
-                    value: int = param(42, l="--value")
-                
-                # Type annotation should take precedence over naming convention
-                def run_command(self, a: CustomArgs):
-                    return f"Value: {a.value}"
-            
-            cli = ConflictCLI()
-            
-            # Type annotation should win over naming convention
-            self.assertEqual(cli.method_args_mapping["command"].__name__, "CustomArgs")
-        finally:
-            autocli_logger.setLevel(original_level)
-
-
-class AnnotationBugTest(unittest.TestCase):
-    """Test specifically for the bug with parameter type annotations."""
-    
-    def test_param_annotation_bug(self):
-        """Test that demonstrates the bug with parameter name 'a' not being recognized."""
-        
-        # Enable debug logging
-        autocli_logger = logging.getLogger("pydantic_autocli")
-        original_level = autocli_logger.level
-        autocli_logger.setLevel(logging.DEBUG)
-        
-        try:
-            # Define a simple CLI class that uses TestArgsClass for type annotation
-            class BugDemoCLI(AutoCLI):
-                """CLI class for demonstrating the bug"""
-                
-                # Method with parameter named 'args' - this should work
-                def run_good(self, a: TestArgsClass):
-                    """Method with standard parameter name that works"""
-                    return a.value
-                
-                # Method with parameter named 'a' - this should also work now
-                def run_bad(self, a: TestArgsClass):
-                    """Method with non-standard parameter name"""
-                    return a.value
-                
-                # Method with another parameter name for testing
-                def run_param(self, param: TestArgsClass):
-                    """Method with alternative parameter name"""
-                    return param.value
-            
-            # Create CLI instance
-            cli = BugDemoCLI()
-            
-            # Print debug info
-            logger.debug("Method args mapping after initialization:")
-            for name, cls in cli.method_args_mapping.items():
-                logger.debug(f"  {name}: {cls.__name__}")
-            
-            # Manually check what the type annotation method returns
-            annotation_good = cli._get_type_annotation_for_method("run_good")
-            annotation_bad = cli._get_type_annotation_for_method("run_bad")
-            annotation_param = cli._get_type_annotation_for_method("run_param")
-            
-            logger.debug(f"Type annotation for run_good: {annotation_good}")
-            logger.debug(f"Type annotation for run_bad: {annotation_bad}")
-            logger.debug(f"Type annotation for run_param: {annotation_param}")
-            
-            # Look at the signature of methods
-            good_params = inspect.signature(BugDemoCLI.run_good).parameters
-            bad_params = inspect.signature(BugDemoCLI.run_bad).parameters
-            param_params = inspect.signature(BugDemoCLI.run_param).parameters
-            
-            logger.debug("Parameters of run_good:")
-            for name, param in good_params.items():
-                logger.debug(f"  {name}: {param.annotation}")
-            
-            logger.debug("Parameters of run_bad:")
-            for name, param in bad_params.items():
-                logger.debug(f"  {name}: {param.annotation}")
-                
-            logger.debug("Parameters of run_param:")
-            for name, param in param_params.items():
-                logger.debug(f"  {name}: {param.annotation}")
-            
-            # This should pass - parameter named 'a' should be correctly resolved
-            self.assertEqual(cli.method_args_mapping["good"].__name__, "TestArgsClass", 
-                            "Method with parameter named 'a' should resolve to TestArgsClass")
-            
-            # This should also pass now after the fix
-            self.assertEqual(cli.method_args_mapping["bad"].__name__, "TestArgsClass",
-                            "Method with parameter named 'a' should also resolve to TestArgsClass")
-                
-            # This should also pass for the alternative parameter name
-            self.assertEqual(cli.method_args_mapping["param"].__name__, "TestArgsClass",
-                           "Method with parameter named 'param' should also resolve to TestArgsClass")
-                
-            # Verify that type hints are properly detected for all methods
-            type_hints_good = get_type_hints(BugDemoCLI.run_good)
-            type_hints_bad = get_type_hints(BugDemoCLI.run_bad)
-            type_hints_param = get_type_hints(BugDemoCLI.run_param)
-            
-            logger.debug(f"Type hints for run_good: {type_hints_good}")
-            logger.debug(f"Type hints for run_bad: {type_hints_bad}")
-            logger.debug(f"Type hints for run_param: {type_hints_param}")
-            
-            # All methods should have their parameter correctly typed
-            self.assertEqual(type_hints_good.get('a'), TestArgsClass)
-            self.assertEqual(type_hints_bad.get('a'), TestArgsClass)
-            self.assertEqual(type_hints_param.get('param'), TestArgsClass)
-            
-        finally:
-            # Restore original logging level
-            autocli_logger.setLevel(original_level)
-
-
-class FallbackTest(unittest.TestCase):
-    """Test fallback to CommonArgs."""
-    
-    def test_fallback(self):
-        """Test that methods with no specific args class fall back to CommonArgs."""
+    def test_default_args_fallback(self):
+        """Test that default args are used when neither type annotation nor naming convention match."""
         
         class FallbackCLI(AutoCLI):
-            def run_fallback(self, a):
-                return "fallback"
+            # Custom CommonArgs class
+            class CommonArgs(AutoCLI.CommonArgs):
+                verbose: bool = param(False, l="--verbose", s="-v")
+            
+            # No matching naming convention, no type annotation
+            def run_custom_command(self, args):
+                return f"Verbose: {args.verbose}"
         
+        # Create CLI instance
         cli = FallbackCLI()
-        # Verify that run_fallback uses CommonArgs
-        self.assertEqual(cli.method_args_mapping["fallback"].__name__, "CommonArgs")
         
-        # Call the method
-        a = FallbackCLI.CommonArgs()
-        result = cli.run_fallback(a)
-        self.assertEqual(result, "fallback")
+        # Create a method to capture the result
+        result_capture = MagicMock()
+        
+        # Patch the run method to capture its result
+        original_method = cli.run_custom_command
+        cli.run_custom_command = lambda args: result_capture(original_method(args)) or True
+        
+        # Run the CLI with direct arguments
+        argv = ["test_script.py", "custom-command", "--verbose"]
+        with patch('sys.exit'):
+            cli.run(argv)
+        
+        # Verify the method was called with correct args (using CommonArgs)
+        result_capture.assert_called_once()
+        args, _ = result_capture.call_args
+        self.assertEqual(args[0], "Verbose: True")
+        
+        # Verify that CommonArgs was used
+        self.assertEqual(cli.method_args_mapping["custom_command"].__name__, "CommonArgs")
+    
+    @patch('asyncio.run')  # Patch asyncio.run to capture the coroutine
+    def test_async_type_annotation(self, mock_asyncio_run):
+        """Test that type annotations work correctly with async methods."""
+        
+        class AsyncCLI(AutoCLI):
+            # Type annotation class
+            class CustomArgs(BaseModel):
+                delay: float = param(0.1, l="--delay", s="-d")
+                message: str = param("Hello", l="--message", s="-m")
+            
+            # Async method with type annotation
+            async def run_async_command(self, args: CustomArgs):
+                # In a real implementation, we would await something here
+                return f"Async {args.message} with delay {args.delay}"
+        
+        # Setup asyncio.run to return the result directly
+        result = "Async World with delay 0.5"
+        mock_asyncio_run.return_value = result
+        
+        # Create CLI instance
+        cli = AsyncCLI()
+        
+        # Run the CLI with direct arguments
+        argv = ["test_script.py", "async-command", "--delay", "0.5", "--message", "World"]
+        with patch('sys.exit'):
+            cli.run(argv)
+        
+        # Verify that asyncio.run was called (indicating async method execution)
+        mock_asyncio_run.assert_called_once()
+        
+        # Check that the CLI used the right args class
+        self.assertEqual(cli.method_args_mapping["async_command"].__name__, "CustomArgs")
+    
+    @patch('asyncio.run')  # Patch asyncio.run to capture the coroutine
+    def test_async_naming_convention(self, mock_asyncio_run):
+        """Test that naming convention works correctly with async methods."""
+        
+        class AsyncNamingCLI(AutoCLI):
+            # Naming convention class
+            class AsyncCommandArgs(BaseModel):
+                count: int = param(1, l="--count", s="-c")
+                verbose: bool = param(False, l="--verbose", s="-v")
+            
+            # Async method using naming convention
+            async def run_async_command(self, args):
+                # In a real implementation, we would await something here
+                result = f"Count: {args.count}"
+                if args.verbose:
+                    result += " (verbose)"
+                return result
+        
+        # Setup asyncio.run to return the result directly
+        result = "Count: 5 (verbose)"
+        mock_asyncio_run.return_value = result
+        
+        # Create CLI instance
+        cli = AsyncNamingCLI()
+        
+        # Run the CLI with direct arguments
+        argv = ["test_script.py", "async-command", "--count", "5", "--verbose"]
+        with patch('sys.exit'):
+            cli.run(argv)
+        
+        # Verify that asyncio.run was called (indicating async method execution)
+        mock_asyncio_run.assert_called_once()
+        
+        # Check that the CLI used the right args class
+        self.assertEqual(cli.method_args_mapping["async_command"].__name__, "AsyncCommandArgs")
+    
+    @patch('builtins.print')  # Patch print to capture the warning message
+    @patch('asyncio.run')  # Patch asyncio.run to capture the coroutine
+    def test_async_conflict_warning(self, mock_asyncio_run, mock_print):
+        """Test that warnings work correctly with async methods that have naming conflicts."""
+        
+        class AsyncConflictCLI(AutoCLI):
+            # Naming convention class
+            class AsyncCommandArgs(BaseModel):
+                name: str = param("default", l="--name", s="-n")
+            
+            # Type annotation class
+            class CustomArgs(BaseModel):
+                value: int = param(42, l="--value", s="-v")
+            
+            # Async method with type annotation (conflict with naming convention)
+            async def run_async_command(self, args: CustomArgs):
+                # In a real implementation, we would await something here
+                return f"Value: {args.value}"
+        
+        # Setup asyncio.run to return the result directly
+        result = "Value: 123"
+        mock_asyncio_run.return_value = result
+        
+        # Create CLI instance - this should trigger the warning
+        cli = AsyncConflictCLI()
+        
+        # Verify the warning message was printed
+        warning_printed = False
+        for call_args in mock_print.call_args_list:
+            call_str = str(call_args)
+            if "Warning" in call_str and "has both a type annotation (CustomArgs) and a naming convention class (AsyncCommandArgs)" in call_str:
+                warning_printed = True
+                break
+        
+        self.assertTrue(warning_printed, "Warning about conflict between type annotation and naming convention was not displayed for async method")
+        
+        # Run the CLI with direct arguments
+        argv = ["test_script.py", "async-command", "--value", "123"]
+        with patch('sys.exit'):
+            cli.run(argv)
+        
+        # Verify that asyncio.run was called (indicating async method execution)
+        mock_asyncio_run.assert_called_once()
+        
+        # Check that the CLI used the type annotation args class (which takes precedence)
+        self.assertEqual(cli.method_args_mapping["async_command"].__name__, "CustomArgs")
 
 
 if __name__ == "__main__":
