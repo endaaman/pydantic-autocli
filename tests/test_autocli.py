@@ -6,20 +6,20 @@ Comprehensive test suite for pydantic-autocli.
 import unittest
 import inspect
 from typing import get_type_hints
-from pydantic import BaseModel, Field
-from pydantic_autocli import BaseCLI
+from pydantic import BaseModel
+from pydantic_autocli import AutoCLI, param
 
 
 class BasicFunctionalityTest(unittest.TestCase):
-    """Test basic functionality of BaseCLI."""
+    """Test basic functionality of AutoCLI."""
     
     def test_basic_cli(self):
         """Test basic CLI functionality with a simple command."""
         
-        class TestCLI(BaseCLI):
-            class GreetArgs(BaseCLI.CommonArgs):
-                name: str = Field("World", json_schema_extra={"l": "--name", "s": "-n"})
-                count: int = Field(1, json_schema_extra={"l": "--count", "s": "-c"})
+        class TestCLI(AutoCLI):
+            class GreetArgs(AutoCLI.CommonArgs):
+                name: str = param("World", l="--name", s="-n")
+                count: int = param(1, l="--count", s="-c")
             
             def run_greet(self, args):
                 return f"Hello, {args.name}!"
@@ -76,11 +76,11 @@ class TypeAnnotationTest(unittest.TestCase):
     def test_type_annotations(self):
         """Test that type annotations correctly resolve argument classes."""
         
-        class AnnotationCLI(BaseCLI):
+        class AnnotationCLI(AutoCLI):
             # Define a model to use with annotations
             class CustomArgs(BaseModel):
-                value: int = Field(42, json_schema_extra={"l": "--value", "s": "-v"})
-                flag: bool = Field(False, json_schema_extra={"l": "--flag", "s": "-f"})
+                value: int = param(42, l="--value", s="-v")
+                flag: bool = param(False, l="--flag", s="-f")
             
             # Method using type annotation directly
             def run_annotated(self, args: CustomArgs):
@@ -89,8 +89,8 @@ class TypeAnnotationTest(unittest.TestCase):
                 return args.value
             
             # Traditional method using naming convention
-            class TraditionalArgs(BaseCLI.CommonArgs):
-                name: str = Field("default", json_schema_extra={"l": "--name", "s": "-n"})
+            class TraditionalArgs(AutoCLI.CommonArgs):
+                name: str = param("default", l="--name", s="-n")
             
             def run_traditional(self, args):
                 return args.name
@@ -130,9 +130,9 @@ class UserPatternTest(unittest.TestCase):
     def test_user_pattern(self):
         """Test CLI using the pattern specified by the user."""
         
-        class UserCLI(BaseCLI):
+        class UserCLI(AutoCLI):
             class BarArgs(BaseModel):
-                a: int = Field(123, json_schema_extra={"l": "--a", "s": "-a"})
+                a: int = param(123, l="--a", s="-a")
             
             def run_foo(self, a: BarArgs):
                 return a.a
@@ -168,7 +168,7 @@ class FallbackTest(unittest.TestCase):
     def test_fallback(self):
         """Test that methods with no specific args class fall back to CommonArgs."""
         
-        class FallbackCLI(BaseCLI):
+        class FallbackCLI(AutoCLI):
             def run_fallback(self, args):
                 return "fallback"
         

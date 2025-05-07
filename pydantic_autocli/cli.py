@@ -12,14 +12,18 @@ from pydantic import BaseModel, Field
 
 
 def snake_to_pascal(s):
-    r = capwords(s.replace('_',' '))
-    r = r.replace(' ','')
+    """Convert snake_case string to PascalCase."""
+    r = capwords(s.replace('_', ' '))
+    r = r.replace(' ', '')
     return r
 
+
 def snake_to_kebab(s):
-    return s.replace('_','-')
+    """Convert snake_case string to kebab-case."""
+    return s.replace('_', '-')
 
 
+# Mapping of JSON Schema primitive types to Python types
 primitive2type = {
     'string': str,
     'number': float,
@@ -28,7 +32,20 @@ primitive2type = {
 
 VERBOSE = False
 
+
 def register_cls_to_parser(cls, parser):
+    """Register a Pydantic model class to an argparse parser.
+    
+    This function converts Pydantic model fields to argparse arguments.
+    It handles various field types and their CLI-specific configurations.
+    
+    Args:
+        cls: A Pydantic model class
+        parser: An argparse parser to add arguments to
+    
+    Returns:
+        dict: A mapping of CLI argument names to model field names
+    """
     if VERBOSE:
         print(cls)
     replacer = {}
@@ -108,25 +125,46 @@ def register_cls_to_parser(cls, parser):
     return replacer
 
 
-class BaseCLI:
+class AutoCLI:
+    """Base class for automatically generating CLI applications from Pydantic models.
+    
+    This class provides functionality to:
+    1. Automatically generate CLI commands from class methods
+    2. Map Pydantic model fields to CLI arguments
+    3. Handle type annotations and naming conventions for argument classes
+    4. Support async commands
+    """
+
     def with_suffix(self, base, suffix):
+        """Add a suffix to a base string if suffix is provided."""
         if suffix:
             return f'{base}_{suffix}'
         return base
 
     def with_wrote(self, s):
+        """Print a message when a file is written."""
         print('wrote', s)
         return s
 
     class CommonArgs(BaseModel):
+        """Base class for common arguments shared across all commands."""
         pass
 
     def _pre_common(self, a):
+        """Execute pre-common hook if defined."""
         pre_common = getattr(self, 'pre_common', None)
         if pre_common:
             pre_common(a)
 
     def wrap_runner(self, key):
+        """Wrap a runner method with common functionality.
+        
+        This includes:
+        - Setting instance variables
+        - Executing pre-common hook
+        - Printing start/end messages
+        - Handling async methods
+        """
         runner = getattr(self, key)
         def alt_runner(args):
             self.a = args
@@ -151,7 +189,13 @@ class BaseCLI:
         return alt_runner
 
     def _get_type_annotation_for_method(self, method_key) -> Optional[Type[BaseModel]]:
-        """Extract type annotation for the run_* method parameter (other than self)"""
+        """Extract type annotation for the run_* method parameter (other than self).
+        
+        This method tries multiple approaches to get the type annotation:
+        1. Direct type annotation in the method signature
+        2. Type hints from the method
+        3. Source code analysis for string annotations
+        """
         method = getattr(self, method_key)
         
         try:
@@ -196,7 +240,13 @@ class BaseCLI:
         return None
     
     def _get_args_class_for_method(self, method_name) -> Type[BaseModel]:
-        """Get the appropriate args class for a method based on type annotation or naming convention"""
+        """Get the appropriate args class for a method based on type annotation or naming convention.
+        
+        The resolution order is:
+        1. Type annotation in the method signature
+        2. Naming convention (CommandArgs class for run_command method)
+        3. Fall back to CommonArgs
+        """
         # First, check for type annotation in the method
         annotation_cls = self._get_type_annotation_for_method(method_name)
         if annotation_cls is not None:
@@ -216,6 +266,13 @@ class BaseCLI:
         return self.default_args_class
 
     def __init__(self):
+        """Initialize the CLI application.
+        
+        This sets up:
+        - Argument parser
+        - Subparsers for each command
+        - Method to args class mapping
+        """
         self.a = None
         self.runners = {}
         self.function = None
@@ -247,6 +304,14 @@ class BaseCLI:
             sub_parser.set_defaults(__function=name, __cls=args_class, __replacer=replacer)
 
     def run(self):
+        """Run the CLI application.
+        
+        This method:
+        1. Parses command line arguments
+        2. Finds the appropriate command and args class
+        3. Executes the command with parsed arguments
+        4. Handles async commands
+        """
         self.raw_args = self.main_parser.parse_args()
         if not hasattr(self.raw_args, '__function'):
             self.main_parser.print_help()
@@ -290,7 +355,7 @@ class BaseCLI:
 
 
 if __name__ == '__main__':
-    class CLI(BaseCLI):
+    class CLI(AutoCLI):
         class CustomArgs(BaseModel):
             diff_name: int = Field(..., s='-D', l='--diff')
         

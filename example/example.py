@@ -3,18 +3,18 @@
 A simple CLI example using pydantic-autocli.
 """
 
-from pydantic import BaseModel, Field
-from pydantic_autocli import BaseCLI
+from pydantic import BaseModel
+from pydantic_autocli import AutoCLI, param
 
-class SimpleCLI(BaseCLI):
-    class CommonArgs(BaseCLI.CommonArgs):
+class SimpleCLI(AutoCLI):
+    class CommonArgs(AutoCLI.CommonArgs):
         # Common arguments for all commands
-        verbose: bool = Field(False, description="Enable verbose output")
+        verbose: bool = param(False, description="Enable verbose output")
 
     class GreetArgs(CommonArgs):
         # Arguments specific to 'greet' command
-        name: str = Field("World", json_schema_extra={"l": "--name", "s": "-n"})
-        count: int = Field(1, json_schema_extra={"l": "--count", "s": "-c"})
+        name: str = param("World", l="--name", s="-n")
+        count: int = param(1, l="--count", s="-c")
 
     def run_greet(self, args):
         """Run the greet command"""
@@ -26,9 +26,9 @@ class SimpleCLI(BaseCLI):
 
     class FileArgs(CommonArgs):
         # Arguments specific to 'file' command
-        filename: str = Field(..., json_schema_extra={"l": "--file", "s": "-f"})
-        write_mode: bool = Field(False, json_schema_extra={"l": "--write", "s": "-w"})
-        mode: str = Field("text", json_schema_extra={"l": "--mode", "s": "-m", "choices": ["text", "binary", "append"]})
+        filename: str = param(..., l="--file", s="-f")
+        write_mode: bool = param(False, l="--write", s="-w")
+        mode: str = param("text", l="--mode", s="-m", choices=["text", "binary", "append"])
 
     def run_file(self, args):
         """Run the file command"""
