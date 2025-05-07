@@ -5,7 +5,11 @@ Automatically generate CLI applications from Pydantic models.
 ## Installation
 
 ```bash
+# Using pip
 pip install pydantic-autocli
+
+# Or using uv
+uv install pydantic-autocli
 ```
 
 ## Usage
@@ -122,11 +126,23 @@ pydantic-autocli uses the following priority order to determine which argument c
 To run the tests:
 
 ```bash
-# Install development dependencies
-pip install -e ".[dev]"
-
-# Run tests
+# Run tests with pytest directly
 pytest
+
+# Or using taskipy
+task test
+```
+
+## Examples
+
+To run the example CLI:
+
+```bash
+# Run the example directly
+python examples/simple.py
+
+# Or using taskipy
+task example
 ```
 
 ## License
