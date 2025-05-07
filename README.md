@@ -8,8 +8,21 @@ Automatically generate CLI applications from Pydantic models.
 # Using pip
 pip install pydantic-autocli
 
-# Or using uv
-uv install pydantic-autocli
+# Using uv
+uv pip install pydantic-autocli
+```
+
+## Development
+
+```bash
+# Install development dependencies
+uv sync --dev
+
+# Run tests
+uv run pytest
+
+# Or using taskipy
+uv run task test
 ```
 
 ## Usage
@@ -126,11 +139,12 @@ pydantic-autocli uses the following priority order to determine which argument c
 To run the tests:
 
 ```bash
-# Run tests with pytest directly
-pytest
+# Install development dependencies and run tests
+uv sync
+uv run pytest
 
 # Or using taskipy
-task test
+uv run task test
 ```
 
 ## Examples
@@ -142,7 +156,7 @@ To run the example CLI:
 python examples/simple.py
 
 # Or using taskipy
-task example
+uv run task example
 ```
 
 ## License
