@@ -4,7 +4,7 @@ import re
 from string import capwords
 import inspect
 import asyncio
-from typing import Callable, Type
+from typing import Callable, Type, get_type_hints
 import argparse
 
 from pydantic import BaseModel, Field
@@ -126,6 +126,30 @@ class BaseCLI:
             return r
         return alt_runner
 
+    def _get_args_class_for_method(self, method_name):
+        """Get the appropriate args class for a method based on type annotation or naming convention"""
+        method = getattr(self, method_name)
+        
+        # Priority 1: Check for type annotation
+        type_hints = get_type_hints(method)
+        
+        # Check for type annotation on the second parameter (first is 'self')
+        params = list(inspect.signature(method).parameters.values())
+        if len(params) > 1 and params[1].name in type_hints:
+            arg_type = type_hints[params[1].name]
+            if inspect.isclass(arg_type) and issubclass(arg_type, BaseModel):
+                return arg_type
+        
+        # Priority 2: Look for a class named according to convention
+        command_name = re.match(r'^run_(.*)$', method_name)[1]
+        args_class_name = snake_to_pascal(command_name) + 'Args'
+        args_class = getattr(self.__class__, args_class_name, None)
+        if args_class is not None:
+            return args_class
+        
+        # Priority 3: Fall back to CommonArgs
+        return self.default_args_class
+
     def __init__(self):
         self.a = None
         self.runners = {}
@@ -134,6 +158,10 @@ class BaseCLI:
 
         self.main_parser = argparse.ArgumentParser(add_help=False)
         sub_parsers = self.main_parser.add_subparsers()
+        
+        # Dictionary to store method name -> args class mapping
+        self.method_args_mapping = {}
+        
         for key in dir(self):
             m = re.match(r'^run_(.*)$', key)
             if not m:
@@ -141,10 +169,15 @@ class BaseCLI:
             name = m[1]
 
             subcommand_name = snake_to_kebab(name)
-            args_class_name = snake_to_pascal(name) + 'Args'
-
+            
+            # Get the appropriate args class for this method
+            args_class = self._get_args_class_for_method(key)
+            
+            # Store the mapping for later use
+            self.method_args_mapping[name] = args_class
+            
+            # Create subparser and register arguments
             sub_parser = sub_parsers.add_parser(subcommand_name, parents=[self.main_parser])
-            args_class = getattr(self, args_class_name, self.default_args_class)
             replacer = register_cls_to_parser(args_class, sub_parser)
             sub_parser.set_defaults(__function=name, __cls=args_class, __replacer=replacer)
 
@@ -193,10 +226,10 @@ class BaseCLI:
 
 if __name__ == '__main__':
     class CLI(BaseCLI):
-        class FooArgs(BaseCLI.CommonArgs):
+        class CustomArgs(BaseModel):
             diff_name: int = Field(..., s='-D', l='--diff')
-
-        def run_foo(self, a):
+        
+        def run_foo(self, a: CustomArgs):
             print(a)
 
         async def run_async(self, a):

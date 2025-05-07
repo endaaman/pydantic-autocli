@@ -68,6 +68,67 @@ The library extends Pydantic's Field with the following CLI-specific parameters:
 | `s` | Short form CLI argument | `Field(..., s="-o")` |
 | `choices` | Allowed values for the argument | `Field("read", choices=["read", "write"])` |
 
+## Type Annotation Support
+
+pydantic-autocli now supports two ways to define CLI argument classes:
+
+### 1. Using Type Annotations
+
+You can directly specify the argument class using type annotations:
+
+```python
+from pydantic import BaseModel, Field
+from pydantic_autocli import BaseCLI
+
+class MyCLI(BaseCLI):
+    # Define a model to use with annotations
+    class CustomArgs(BaseModel):
+        value: int = Field(42, l="--value", s="-v")
+        flag: bool = Field(False, l="--flag", s="-f")
+    
+    # Use type annotation to specify args class
+    def run_command(self, args: CustomArgs):
+        print(f"Value: {args.value}")
+        if args.flag:
+            print("Flag is set")
+        return True
+```
+
+### 2. Using Naming Convention (Traditional)
+
+The traditional naming convention continues to work:
+
+```python
+class MyCLI(BaseCLI):
+    # Args class named after command (CommandArgs)
+    class CommandArgs(BaseCLI.CommonArgs):
+        name: str = Field("default", l="--name", s="-n")
+    
+    def run_command(self, args):
+        print(f"Name: {args.name}")
+        return True
+```
+
+### Resolution Priority
+
+pydantic-autocli uses the following priority order to determine which argument class to use:
+
+1. Type annotation on the method parameter
+2. Naming convention (CommandArgs class for run_command method)
+3. Fall back to CommonArgs
+
+## Testing
+
+To run the tests:
+
+```bash
+# Install development dependencies
+pip install -e ".[dev]"
+
+# Run tests
+pytest
+```
+
 ## License
 
 See LICENSE file.
