@@ -5,7 +5,7 @@ from string import capwords
 import inspect
 import asyncio
 import typing
-from typing import Callable, Type, get_type_hints, Optional, Dict, Any
+from typing import Callable, Type, get_type_hints, Optional, Dict, Any, List, Union
 import argparse
 import logging
 
@@ -169,12 +169,12 @@ class AutoCLI:
         - Handling async methods
         """
         runner = getattr(self, key)
-        def alt_runner(args):
-            self.a = args
+        def alt_runner(a):
+            self.a = a
             self.function = key
-            self._pre_common(args)
+            self._pre_common(a)
             print(f'Starting <{key}>')
-            d = args.dict()
+            d = a.dict()
             if len(d) > 0:
                 print('Args')
                 maxlen = max(len(k) for k in d) if len(d) > 0 else -1
@@ -184,9 +184,9 @@ class AutoCLI:
                 print('No args')
 
             if inspect.iscoroutinefunction(runner):
-                r = asyncio.run(runner(args))
+                r = asyncio.run(runner(a))
             else:
-                r =  runner(args)
+                r = runner(a)
             print(f'Done <{key}>')
             return r
         return alt_runner
@@ -195,107 +195,18 @@ class AutoCLI:
         """Extract type annotation for the run_* method parameter (other than self).
         
         This method tries multiple approaches to get the type annotation:
-        1. Direct type annotation in the method signature
-        2. Type hints from the method
-        3. Source code analysis for string annotations
+        1. Direct type hints from the method (most reliable)
+        2. Signature analysis for modern Python versions
+        3. Source code analysis as fallback for string annotations
         """
         method = getattr(self, method_key)
         
         logger.debug(f"Trying to get type annotation for method {method_key}")
         
         try:
-            # Get signature parameters - but this may fail to get annotations in some versions of Python
-            signature = inspect.signature(method)
-            params = list(signature.parameters.values())
-            
-            if len(params) <= 1:
-                logger.debug(f"Method {method_key} has params: {params} - may not be detecting parameters correctly")
-                # Even if signature fails to detect params, we'll try get_type_hints directly
-            else:
-                param_name = params[1].name  # First param after self
-                logger.debug(f"Parameter name: {param_name}")
-            
-            # Try to get the type hints directly - this is most reliable across Python versions
+            # First try: Get type hints directly - most reliable across Python versions
             try:
-                # Get type hints from the method
-                type_hints = get_type_hints(method, globalns=globals())
-                logger.debug(f"Type hints for {method_key}: {type_hints}")
-                
-                # If we have any type hints, look for parameters other than 'return'
-                param_hints = {k: v for k, v in type_hints.items() if k != 'return'}
-                
-                # Type hints should contain the parameter if it has annotation
-                if param_hints:
-                    # Get first non-self parameter (assumes first item is the parameter we want)
-                    for param_name, param_type in param_hints.items():
-                        if param_name != 'self' and inspect.isclass(param_type) and issubclass(param_type, BaseModel):
-                            logger.debug(f"Found valid parameter {param_name} with type {param_type.__name__}")
-                            return param_type
-                    
-                    # If we got here, none of the parameters were BaseModel subclasses
-                    logger.debug(f"Found parameters but none are BaseModel subclasses: {param_hints}")
-                else:
-                    logger.debug(f"No parameter type hints found for {method_key}")
-            except Exception as e:
-                logger.debug(f"Error getting type hints directly: {e}")
-            
-            # Get type annotation from source as fallback
-            source = inspect.getsource(method)
-            logger.debug(f"Method source: {source}")
-            
-            # Try to extract parameter name and type from source if we didn't get it from signature
-            if len(params) <= 1:
-                # Look for "def run_xxx(self, param_name: Type):" with a regex
-                method_pattern = rf"def\s+{method_key}\s*\(\s*self\s*,\s*([a-zA-Z0-9_]+)\s*:\s*([A-Za-z0-9_\.]+)"
-                match = re.search(method_pattern, source)
-                if match:
-                    param_name = match.group(1).strip()
-                    class_name = match.group(2).strip()
-                    logger.debug(f"Extracted from source - Parameter: {param_name}, Type: {class_name}")
-                else:
-                    logger.debug(f"Could not extract parameter info from source")
-                    return None
-            else:
-                # We already have param_name from signature, look for its type
-                param_name = params[1].name
-                annotation_pattern = rf"def\s+{method_key}\s*\(\s*self\s*,\s*{param_name}\s*:\s*([A-Za-z0-9_\.]+)"
-                match = re.search(annotation_pattern, source)
-                if match:
-                    class_name = match.group(1).strip()
-                    logger.debug(f"Found annotation class name: {class_name}")
-                else:
-                    logger.debug(f"No annotation match found in source for {param_name}")
-                    return None
-            
-            # Look for the class by name
-            # First try to find the class directly on the instance's class
-            if hasattr(self.__class__, class_name):
-                attr = getattr(self.__class__, class_name)
-                if inspect.isclass(attr) and issubclass(attr, BaseModel):
-                    logger.debug(f"Found class {class_name} directly")
-                    return attr
-            
-            # Then search through all class attributes
-            for attr_name in dir(self.__class__):
-                attr = getattr(self.__class__, attr_name)
-                if inspect.isclass(attr) and attr.__name__ == class_name:
-                    if issubclass(attr, BaseModel):
-                        logger.debug(f"Successfully found class {class_name} for {method_key}")
-                        return attr
-                    else:
-                        logger.debug(f"Found class {class_name} but it doesn't subclass BaseModel")
-            
-            # Check globals for external classes
-            if class_name in globals() and inspect.isclass(globals()[class_name]):
-                cls = globals()[class_name]
-                if issubclass(cls, BaseModel):
-                    logger.debug(f"Found class {class_name} in globals")
-                    return cls
-            
-            logger.debug(f"Couldn't find class {class_name}")
-            
-            # Final fallback - try with locals
-            try:
+                # Get type hints from the method using globals and locals
                 locals_dict = {name: getattr(self.__class__, name) for name in dir(self.__class__)}
                 # Add main module globals
                 if '__main__' in sys.modules:
@@ -303,19 +214,105 @@ class AutoCLI:
                     locals_dict.update(main_globals)
                 
                 type_hints = get_type_hints(method, globalns=globals(), localns=locals_dict)
-                logger.debug(f"Type hints (with locals) for {method_key}: {type_hints}")
+                logger.debug(f"Type hints for {method_key}: {type_hints}")
                 
-                # Look for any parameter with BaseModel type
-                for name, typ in type_hints.items():
-                    if name != 'return' and name != 'self':
-                        if inspect.isclass(typ) and issubclass(typ, BaseModel):
-                            logger.debug(f"Found type hint {typ.__name__} from locals for parameter {name}")
-                            return typ
-            except Exception as e2:
-                logger.debug(f"Error getting type hints with locals: {e2}")
+                # Check all parameters (except 'self' and 'return') for BaseModel types
+                for param_name, param_type in type_hints.items():
+                    if param_name != 'return' and param_name != 'self':
+                        if inspect.isclass(param_type) and issubclass(param_type, BaseModel):
+                            logger.debug(f"Found valid parameter {param_name} with type {param_type.__name__}")
+                            return param_type
+                
+                if type_hints:
+                    logger.debug(f"Found parameters but none are BaseModel subclasses: {type_hints}")
+            except Exception as e:
+                logger.debug(f"Error getting type hints directly: {e}")
+            
+            # Second try: Use signature analysis
+            signature = inspect.signature(method)
+            params = list(signature.parameters.values())
+            
+            if len(params) > 1:  # At least self + one parameter
+                param = params[1]  # First param after self
+                param_name = param.name
+                annotation = param.annotation
+                
+                logger.debug(f"Parameter from signature: {param_name} with annotation {annotation}")
+                
+                # Check if the annotation is already a class
+                if inspect.isclass(annotation) and issubclass(annotation, BaseModel):
+                    logger.debug(f"Found direct class annotation: {annotation.__name__}")
+                    return annotation
+                
+                # Check if annotation is a string (common in older Python versions)
+                if isinstance(annotation, str) and annotation != inspect.Parameter.empty:
+                    class_name = annotation
+                    
+                    # Try to find the class by name in various places
+                    # First check class attributes
+                    if hasattr(self.__class__, class_name):
+                        attr = getattr(self.__class__, class_name)
+                        if inspect.isclass(attr) and issubclass(attr, BaseModel):
+                            logger.debug(f"Found class {class_name} in class attributes")
+                            return attr
+                    
+                    # Then search through all class attributes by name
+                    for attr_name in dir(self.__class__):
+                        attr = getattr(self.__class__, attr_name)
+                        if inspect.isclass(attr) and attr.__name__ == class_name:
+                            if issubclass(attr, BaseModel):
+                                logger.debug(f"Found class {class_name} by name")
+                                return attr
+                    
+                    # Check globals
+                    if class_name in globals() and inspect.isclass(globals()[class_name]):
+                        cls = globals()[class_name]
+                        if issubclass(cls, BaseModel):
+                            logger.debug(f"Found class {class_name} in globals")
+                            return cls
+            else:
+                logger.debug(f"Method {method_key} has insufficient parameters: {params}")
+            
+            # Third try: Source code analysis as last resort
+            source = inspect.getsource(method)
+            logger.debug(f"Method source: {source}")
+            
+            # Use regex to extract parameter info from source
+            method_pattern = rf"def\s+{method_key}\s*\(\s*self\s*,\s*([a-zA-Z0-9_]+)\s*:\s*([A-Za-z0-9_\.]+)"
+            match = re.search(method_pattern, source)
+            
+            if match:
+                param_name = match.group(1).strip()
+                class_name = match.group(2).strip()
+                logger.debug(f"Extracted from source - Parameter: {param_name}, Type: {class_name}")
+                
+                # Look for the class by name
+                # First check class attributes
+                if hasattr(self.__class__, class_name):
+                    attr = getattr(self.__class__, class_name)
+                    if inspect.isclass(attr) and issubclass(attr, BaseModel):
+                        logger.debug(f"Found class {class_name} from source analysis")
+                        return attr
+                
+                # Search all attributes
+                for attr_name in dir(self.__class__):
+                    attr = getattr(self.__class__, attr_name)
+                    if inspect.isclass(attr) and attr.__name__ == class_name:
+                        if issubclass(attr, BaseModel):
+                            logger.debug(f"Found class {class_name} from source by name matching")
+                            return attr
+                
+                # Check globals
+                if class_name in globals() and inspect.isclass(globals()[class_name]):
+                    cls = globals()[class_name]
+                    if issubclass(cls, BaseModel):
+                        logger.debug(f"Found class {class_name} in globals from source analysis")
+                        return cls
+            else:
+                logger.debug(f"Could not extract parameter info from source")
                 
         except Exception as e:
-            logger.debug(f"Error getting type annotation for {method_key}: {e}")
+            logger.exception(f"Error getting type annotation for {method_key}: {e}")
         
         logger.debug(f"No type annotation found for method {method_key}")
         return None
@@ -457,9 +454,12 @@ class AutoCLI:
             args_params[k] = v
             
         logger.debug(f"Args params for parsing: {args_params}")
+        
+        # Support both Pydantic v1 and v2
+        parse_method = getattr(args_cls, "model_validate", None) or args_cls.parse_obj
 
         try:
-            args = args_cls.parse_obj(args_params)
+            args = parse_method(args_params)
             logger.debug(f"Created args instance: {args}")
         except Exception as e:
             logger.error(f"Failed to create args instance: {e}")
@@ -475,10 +475,15 @@ class AutoCLI:
 
         self._pre_common(args)
         print(f'Starting <{name}>')
-        if len(args_params) > 0:
+        
+        # Use model_dump for Pydantic v2 compatibility or dict() for v1
+        dict_method = getattr(args, "model_dump", None) or args.dict
+        args_dict = dict_method()
+        
+        if len(args_dict) > 0:
             print('Args')
-            maxlen = max(len(k) for k in args_params) if len(args_params) > 0 else -1
-            for k, v in args_params.items():
+            maxlen = max(len(k) for k in args_dict) if len(args_dict) > 0 else -1
+            for k, v in args_dict.items():
                 print(f'\t{k:<{maxlen+1}}: {v}')
         else:
             print('No args')
@@ -487,7 +492,7 @@ class AutoCLI:
             if inspect.iscoroutinefunction(function):
                 r = asyncio.run(function(args))
             else:
-                r =  function(args)
+                r = function(args)
             print(f'Done <{name}>')
         except Exception as e:
             logger.error(f"ERROR in command execution: {e}")

@@ -16,13 +16,13 @@ class SimpleCLI(AutoCLI):
         name: str = param("World", l="--name", s="-n")
         count: int = param(1, l="--count", s="-c")
 
-    def run_greet(self, args:GreetArgs):
+    def run_greet(self, a:GreetArgs):
         """Run the greet command"""
-        for _ in range(args.count):
-            print(f"Hello, {args.name}!")
-        
-        if args.verbose:
-            print(f"Greeted {args.name} {args.count} times")
+        for _ in range(a.count):
+            print(f"Hello, {a.name}!")
+
+        if a.verbose:
+            print(f"Greeted {a.name} {a.count} times")
 
     class CustomArgs(CommonArgs):
         # Arguments specific to 'file' command
@@ -30,11 +30,12 @@ class SimpleCLI(AutoCLI):
         write_mode: bool = param(False, l="--write", s="-w")
         mode: str = param("text", l="--mode", s="-m", choices=["text", "binary", "append"])
 
-    def run_file(self, args:CustomArgs):
+    def run_file(self, a:CustomArgs):
         """Run the file command"""
-        assert args.mode == "text"
-        print(f"File: {args.filename}, Mode: {args.mode}, Write: {args.write_mode}")
+        assert a.mode == "text"
+        print(type(a))
+        print(f"File: {a.filename}, Mode: {a.mode}, Write: {a.write_mode}")
 
 if __name__ == "__main__":
     cli = SimpleCLI()
-    cli.run() 
+    cli.run()

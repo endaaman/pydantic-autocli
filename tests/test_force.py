@@ -13,9 +13,9 @@ def test_type_annotations():
         class CustomArgs(BaseModel):
             value: int = Field(42, json_schema_extra={"l": "--value", "s": "-v"})
         
-        def run_test(self, args: CustomArgs):
-            print(f"Value: {args.value}")
-            return args.value
+        def run_test(self, a: CustomArgs):
+            print(f"Value: {a.value}")
+            return a.value
     
     # Create an instance
     cli = TestCLI()

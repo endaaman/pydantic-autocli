@@ -33,13 +33,13 @@ class BasicFunctionalityTest(unittest.TestCase):
                 name: str = param("World", l="--name", s="-n")
                 count: int = param(1, l="--count", s="-c")
             
-            def run_greet(self, args):
-                return f"Hello, {args.name}!"
+            def run_greet(self, a):
+                return f"Hello, {a.name}!"
         
         cli = TestCLI()
         # Directly call the method with args
-        args = TestCLI.GreetArgs(name="Test User")
-        result = cli.run_greet(args)
+        a = TestCLI.GreetArgs(name="Test User")
+        result = cli.run_greet(a)
         self.assertEqual(result, "Hello, Test User!")
 
 
@@ -56,17 +56,17 @@ class TypeAnnotationTest(unittest.TestCase):
                 flag: bool = param(False, l="--flag", s="-f")
             
             # Method using type annotation directly
-            def run_annotated(self, args: CustomArgs):
-                if args.flag:
-                    return args.value * 2
-                return args.value
+            def run_annotated(self, a: CustomArgs):
+                if a.flag:
+                    return a.value * 2
+                return a.value
             
             # Traditional method using naming convention
             class TraditionalArgs(AutoCLI.CommonArgs):
                 name: str = param("default", l="--name", s="-n")
             
-            def run_traditional(self, args):
-                return args.name
+            def run_traditional(self, a):
+                return a.name
         
         # Enable debug logging for AutoCLI
         autocli_logger = logging.getLogger("pydantic_autocli")
@@ -108,14 +108,19 @@ class AnnotationBugTest(unittest.TestCase):
                 """CLI class for demonstrating the bug"""
                 
                 # Method with parameter named 'args' - this should work
-                def run_good(self, args: TestArgsClass):
-                    """Method with standard parameter name"""
-                    return args.value
+                def run_good(self, a: TestArgsClass):
+                    """Method with standard parameter name that works"""
+                    return a.value
                 
-                # Method with parameter named 'a' - this will not resolve correctly
+                # Method with parameter named 'a' - this should also work now
                 def run_bad(self, a: TestArgsClass):
                     """Method with non-standard parameter name"""
                     return a.value
+                
+                # Method with another parameter name for testing
+                def run_param(self, param: TestArgsClass):
+                    """Method with alternative parameter name"""
+                    return param.value
             
             # Create CLI instance
             cli = BugDemoCLI()
@@ -128,13 +133,16 @@ class AnnotationBugTest(unittest.TestCase):
             # Manually check what the type annotation method returns
             annotation_good = cli._get_type_annotation_for_method("run_good")
             annotation_bad = cli._get_type_annotation_for_method("run_bad")
+            annotation_param = cli._get_type_annotation_for_method("run_param")
             
             logger.debug(f"Type annotation for run_good: {annotation_good}")
             logger.debug(f"Type annotation for run_bad: {annotation_bad}")
+            logger.debug(f"Type annotation for run_param: {annotation_param}")
             
             # Look at the signature of methods
             good_params = inspect.signature(BugDemoCLI.run_good).parameters
             bad_params = inspect.signature(BugDemoCLI.run_bad).parameters
+            param_params = inspect.signature(BugDemoCLI.run_param).parameters
             
             logger.debug("Parameters of run_good:")
             for name, param in good_params.items():
@@ -143,32 +151,36 @@ class AnnotationBugTest(unittest.TestCase):
             logger.debug("Parameters of run_bad:")
             for name, param in bad_params.items():
                 logger.debug(f"  {name}: {param.annotation}")
-            
-            # This should pass - parameter named 'args' should be correctly resolved
-            if annotation_good == TestArgsClass:
-                self.assertEqual(cli.method_args_mapping["good"].__name__, "TestArgsClass", 
-                                "Method with parameter named 'args' should resolve to TestArgsClass")
-            
-            # This should fail due to the bug - parameter named 'a' doesn't get resolved
-            if annotation_bad == TestArgsClass:
-                self.assertEqual(cli.method_args_mapping["bad"].__name__, "TestArgsClass",
-                                "Method with parameter named 'a' should also resolve to TestArgsClass")
-            else:
-                # If the annotation isn't being detected at all, validate our assumption
-                self.assertEqual(cli.method_args_mapping["bad"].__name__, "CommonArgs",
-                               "Method with parameter named 'a' is incorrectly resolving to CommonArgs")
                 
-                # Now manually verify that the annotation exists but isn't being detected
-                type_hints = get_type_hints(BugDemoCLI.run_bad)
-                logger.debug(f"Type hints for run_bad: {type_hints}")
-                
-                if 'a' in type_hints and type_hints['a'] == TestArgsClass:
-                    # Confirm that this is a bug - the type hint exists but isn't being used
-                    logger.debug("BUG CONFIRMED: Type hint for 'a' parameter exists but isn't being used")
+            logger.debug("Parameters of run_param:")
+            for name, param in param_params.items():
+                logger.debug(f"  {name}: {param.annotation}")
             
-            # Examine the _get_type_annotation_for_method implementation
-            source = inspect.getsource(AutoCLI._get_type_annotation_for_method)
-            logger.debug(f"Source of _get_type_annotation_for_method: {source}")
+            # This should pass - parameter named 'a' should be correctly resolved
+            self.assertEqual(cli.method_args_mapping["good"].__name__, "TestArgsClass", 
+                            "Method with parameter named 'a' should resolve to TestArgsClass")
+            
+            # This should also pass now after the fix
+            self.assertEqual(cli.method_args_mapping["bad"].__name__, "TestArgsClass",
+                            "Method with parameter named 'a' should also resolve to TestArgsClass")
+                
+            # This should also pass for the alternative parameter name
+            self.assertEqual(cli.method_args_mapping["param"].__name__, "TestArgsClass",
+                           "Method with parameter named 'param' should also resolve to TestArgsClass")
+                
+            # Verify that type hints are properly detected for all methods
+            type_hints_good = get_type_hints(BugDemoCLI.run_good)
+            type_hints_bad = get_type_hints(BugDemoCLI.run_bad)
+            type_hints_param = get_type_hints(BugDemoCLI.run_param)
+            
+            logger.debug(f"Type hints for run_good: {type_hints_good}")
+            logger.debug(f"Type hints for run_bad: {type_hints_bad}")
+            logger.debug(f"Type hints for run_param: {type_hints_param}")
+            
+            # All methods should have their parameter correctly typed
+            self.assertEqual(type_hints_good.get('a'), TestArgsClass)
+            self.assertEqual(type_hints_bad.get('a'), TestArgsClass)
+            self.assertEqual(type_hints_param.get('param'), TestArgsClass)
             
         finally:
             # Restore original logging level
@@ -182,7 +194,7 @@ class FallbackTest(unittest.TestCase):
         """Test that methods with no specific args class fall back to CommonArgs."""
         
         class FallbackCLI(AutoCLI):
-            def run_fallback(self, args):
+            def run_fallback(self, a):
                 return "fallback"
         
         cli = FallbackCLI()
@@ -190,8 +202,8 @@ class FallbackTest(unittest.TestCase):
         self.assertEqual(cli.method_args_mapping["fallback"].__name__, "CommonArgs")
         
         # Call the method
-        args = FallbackCLI.CommonArgs()
-        result = cli.run_fallback(args)
+        a = FallbackCLI.CommonArgs()
+        result = cli.run_fallback(a)
         self.assertEqual(result, "fallback")
 
 
