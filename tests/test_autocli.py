@@ -18,8 +18,8 @@ class BasicFunctionalityTest(unittest.TestCase):
         
         class TestCLI(BaseCLI):
             class GreetArgs(BaseCLI.CommonArgs):
-                name: str = Field("World", l="--name", s="-n")
-                count: int = Field(1, l="--count", s="-c")
+                name: str = Field("World", json_schema_extra={"l": "--name", "s": "-n"})
+                count: int = Field(1, json_schema_extra={"l": "--count", "s": "-c"})
             
             def run_greet(self, args):
                 return f"Hello, {args.name}!"
@@ -79,8 +79,8 @@ class TypeAnnotationTest(unittest.TestCase):
         class AnnotationCLI(BaseCLI):
             # Define a model to use with annotations
             class CustomArgs(BaseModel):
-                value: int = Field(42, l="--value", s="-v")
-                flag: bool = Field(False, l="--flag", s="-f")
+                value: int = Field(42, json_schema_extra={"l": "--value", "s": "-v"})
+                flag: bool = Field(False, json_schema_extra={"l": "--flag", "s": "-f"})
             
             # Method using type annotation directly
             def run_annotated(self, args: CustomArgs):
@@ -90,7 +90,7 @@ class TypeAnnotationTest(unittest.TestCase):
             
             # Traditional method using naming convention
             class TraditionalArgs(BaseCLI.CommonArgs):
-                name: str = Field("default", l="--name", s="-n")
+                name: str = Field("default", json_schema_extra={"l": "--name", "s": "-n"})
             
             def run_traditional(self, args):
                 return args.name
@@ -132,7 +132,7 @@ class UserPatternTest(unittest.TestCase):
         
         class UserCLI(BaseCLI):
             class BarArgs(BaseModel):
-                a: int = Field(123, l="--a", s="-a")
+                a: int = Field(123, json_schema_extra={"l": "--a", "s": "-a"})
             
             def run_foo(self, a: BarArgs):
                 return a.a

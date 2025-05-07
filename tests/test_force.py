@@ -11,7 +11,7 @@ def test_type_annotations():
     
     class TestCLI(BaseCLI):
         class CustomArgs(BaseModel):
-            value: int = Field(42, l="--value", s="-v")
+            value: int = Field(42, json_schema_extra={"l": "--value", "s": "-v"})
         
         def run_test(self, args: CustomArgs):
             print(f"Value: {args.value}")
@@ -36,7 +36,7 @@ def test_user_pattern():
     
     class UserCLI(BaseCLI):
         class BarArgs(BaseModel):
-            a: int = Field(123, l="--a", s="-a")
+            a: int = Field(123, json_schema_extra={"l": "--a", "s": "-a"})
         
         def run_foo(self, a: BarArgs):
             print(f"a = {a.a}")
