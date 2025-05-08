@@ -1,8 +1,8 @@
-#!/usr/bin/env python3
 """
 A simple CLI example using pydantic-autocli.
 """
 
+import os
 from pydantic import BaseModel
 from pydantic_autocli import AutoCLI, param
 
@@ -18,6 +18,7 @@ class SimpleCLI(AutoCLI):
 
     def run_greet(self, a:GreetArgs):
         """Run the greet command"""
+        print(type(a))
         for _ in range(a.count):
             print(f"Hello, {a.name}!")
 
@@ -32,18 +33,15 @@ class SimpleCLI(AutoCLI):
 
     def run_file(self, a:CustomArgs):
         """Run the file command"""
-        assert a.mode == "text"
         print(type(a))
         print(f"File: {a.filename}, Mode: {a.mode}, Write: {a.write_mode}")
-
-    class FooArgs(CommonArgs):
-        pass
-
-    class BarArgs(CommonArgs):
-        pass
-
-    def run_bar(self, a:FooArgs):
-        pass
+        if os.path.exists(a.filename):
+            print('File found:', a.filename)
+            # return 0
+            return  # empty return returns code:0
+        else:
+            print('File not found:', a.filename)
+            return 1
 
 if __name__ == "__main__":
     cli = SimpleCLI()
