@@ -227,38 +227,6 @@ class AutoCLI:
         logger.debug(f"Final method_args_mapping: {[(k, v.__name__) for k, v in self.method_args_mapping.items()]}")
 
 
-    def wrap_runner(self, key):
-        """Wrap a runner method with common functionality.
-
-        This includes:
-        - Setting instance variables
-        - Executing pre-common hook
-        - Printing start/end messages
-        - Handling async methods
-        """
-        runner = getattr(self, key)
-        def alt_runner(args):
-            self.args = args
-            self.function = key
-            self._pre_common(a)
-            print(f"Starting <{key}>")
-            d = a.dict()
-            if len(d) > 0:
-                print("Args")
-                maxlen = max(len(k) for k in d) if len(d) > 0 else -1
-                for k, v in d.items():
-                    print(f"\t{k:<{maxlen+1}}: {v}")
-            else:
-                print("No args")
-
-            if inspect.iscoroutinefunction(runner):
-                r = asyncio.run(runner(args))
-            else:
-                r = runner(args)
-            print(f"Done <{key}>")
-            return r
-        return alt_runner
-
     def _get_type_annotation_for_method(self, method_key) -> Optional[Type[BaseModel]]:
         """Extract type annotation for the run_* method parameter (other than self).
 
@@ -529,12 +497,24 @@ class AutoCLI:
         else:
             print("No args")
 
+        result = False
         try:
             if inspect.iscoroutinefunction(function):
-                r = asyncio.run(function(args))
+                result = asyncio.run(function(args))
             else:
-                r = function(args)
+                result = function(args)
             print(f"Done <{name}>")
         except Exception as e:
             logger.error(f"ERROR in command execution: {e}")
             logger.debug("", exc_info=True)
+
+        if result is None:
+            code = 0
+        elif result is True:
+            code = 0
+        elif result is False:
+            code = 1
+        else:
+            code = result
+            
+        sys.exit(code)

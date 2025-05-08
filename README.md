@@ -1,6 +1,6 @@
 # pydantic-autocli
 
-Automatically generate CLI applications from Pydantic models.
+Automatically generate sub-command based CLI applications from Pydantic models.
 
 ## Installation
 
@@ -27,17 +27,24 @@ from pydantic import BaseModel
 from pydantic_autocli import AutoCLI, param
 
 class MyCLI(AutoCLI):
+    class CommonArgs(AutoCLI.CommonArgs):
+        # Common arguments for all commands and act as fallback
+        verbose: bool = param(False, l="--verbose", s="-v", description="Enable detailed output")
+        seed: int = 42
+
+    # Executed commonly for all subcommands
+    def pre_common(self, args:CommonArgs):
+        print('Using seed: {args.seed}')
+        
     # Standard Pydantic notation
-    class SimpleArgs(BaseModel):
+    class SimpleArgs(CommonArgs):
         # Required parameter (no default value)
         required_value: int
-        
         # Optional parameter (with default value)
         optional_value: int = 123
-        
         # Array parameter
         names: list[str] = []
-    
+        
     # This method will automatically use SimpleArgs
     # Args class selection rule: run_simple -> SimpleArgs (by naming convention)
     def run_simple(self, args):
@@ -45,131 +52,57 @@ class MyCLI(AutoCLI):
         print(f"Required: {args.required_value}")
         print(f"Optional: {args.optional_value}")
         print(f"Names: {args.names}")
-        return True  # Indicates success (exit code 0)
-    
-    # Notation using the param function
-    class CommonArgs(AutoCLI.CommonArgs):
-        # Common arguments for all commands
-        verbose: bool = param(False, l="--verbose", s="-v", description="Enable detailed output")
-    
-    class AdvancedArgs(CommonArgs):
-        # Specify short and long forms
-        name: str = param(..., l="--name", s="-n")
-        
+
+    class CustomAdvancedArgs(CommonArgs):
+        # file_name becomes --file-name in command line 
+        file_name: str
         # Restrict choices
         mode: str = param("read", l="--mode", choices=["read", "write", "append"])
-        
-        # Array parameters (with type specification)
-        input_paths: list[str] = param(..., l="--in", s="-i")
-        numbers: list[int] = param([1, 2, 3], l="--nums")
+        wait: float = 0.5
 
-    # This method will automatically use AdvancedArgs 
-    # Args class selection rule: run_advanced -> AdvancedArgs (by naming convention)
-    def run_advanced(self, args):
+    # This method will use CustomAdvancedArgs
+    # Args class is explicitly specified (by type annotation)
+    # This is an async method that can be awaited
+    async def run_advanced(self, args:CustomAdvancedArgs):
         """Execute advanced command"""
-        print(f"Name: {args.name}, Mode: {args.mode}")
-        print(f"Input paths: {args.input_paths}")
+        print(f"Mode: {args.mode}")
+        print(f"Filenames: {args.file_names}")
         print(f"Numbers: {args.numbers}")
+
+        import asyncio
+        print(f"Awaiting for {args.wait}s..")
+        await asyncio.sleep(args.wait)
+
         if args.verbose:
             print("Verbose mode enabled")
+        if not os.path.exists(args.file_name):
+            return False # Indicates error (exit code 1)
         return True  # Indicates success (exit code 0)
-    
-    # Example with multi-word command and parameters
-    class ShowFileInfoArgs(CommonArgs):
-        # Parameter names with underscores become kebab-case in CLI
-        # file_path becomes --file-path in command line
-        file_path: str = param(..., l="--file-path", s="-f")
-        
-        # show_lines becomes --show-lines in command line
-        show_lines: bool = param(False, l="--show-lines")
-        
-        # line_count becomes --line-count in command line 
-        line_count: int = param(10, l="--line-count")
-    
-    # Multi-word command: run_show_file_info becomes "show-file-info" command
-    # Args selection rule: run_show_file_info -> ShowFileInfoArgs
-    def run_show_file_info(self, args):
-        """Show information about a file"""
-        print(f"File: {args.file_path}")
-        if args.show_lines:
-            print(f"Showing {args.line_count} lines")
-        return True  # Indicates success (exit code 0)
-    
-    # Example that returns failure
-    class ErrorArgs(CommonArgs):
-        code: int = param(1, l="--code", s="-c")
-    
-    # This method will automatically use ErrorArgs
-    # Args class selection rule: run_error -> ErrorArgs (by naming convention)
-    def run_error(self, args):
-        """Example command that returns an error"""
-        print(f"Simulating error with code {args.code}")
-        return False  # Indicates failure (exit code 1)
-        # Or return a specific exit code: return args.code
 
-    class CustomArgs(BaseModel):
-        value: int = param(42, l="--value", s="-v")
-        flag: bool = param(False, l="--flag", s="-f")
-    
-    # Use type annotation to specify args class
-    def run_command(self, args: CustomArgs):
-        print(f"Value: {args.value}")
-        if args.flag:
-            print("Flag is set")
-        return True
+        # Also supports custom exit codes
+        # return 423
 
 if __name__ == "__main__":
     cli = MyCLI()
-    cli.run()
+    cli.run()  # Uses sys.argv by default    
+    # cli.run(sys.argv)  # Explicitly pass sys.argv
 
-### Direct Command-line Arguments
+    # Pass custom arguments
+    # cli.run(["program_name", "command", "--value", "value1", "--flag"])    
+```
 
-You can also pass command-line arguments directly to the `run()` method, which is useful for programmatic CLI invocation or testing:
-
-```python
-cli = MyCLI()
-
-# These are equivalent:
-cli.run()  # Uses sys.argv by default
-cli.run(sys.argv)  # Explicitly pass sys.argv
-
-# Pass custom arguments
-cli.run(["program_name", "command", "--option1", "value1", "--flag"])
-
-# Useful for testing or embedding the CLI in larger applications
-def process_with_cli(filename, show_details=False):
-    args = ["program", "process", "--file", filename]
-    if show_details:
-        args.append("--verbose")
-    return cli.run(args)
 
 ### Command-line execution examples
 
 ```bash
-# Execute simple command
-$ python mycli.py simple --required-value 42 --names Alice Bob Charlie
-Required: 42
-Optional: 123
-Names: ['Alice', 'Bob', 'Charlie']
+# Run simple command with required parameter
+python your_script.py run-simple --required-value 42
 
-# Execute advanced command
-$ python mycli.py advanced --name test --mode write --in file1.txt file2.txt --nums 5 10 15 -v
-Name: test, Mode: write
-Input paths: ['file1.txt', 'file2.txt']
-Numbers: [5, 10, 15]
-Verbose mode enabled
+# Run simple command with all parameters
+python your_script.py run-simple --required-value 42 --optional-value 100 --names "John Jane"
 
-# Execute multi-word command (note the kebab-case)
-# run_show_file_info method becomes show-file-info command
-# Parameter names also use kebab-case (--file-path, --show-lines, --line-count)
-$ python mycli.py show-file-info --file-path example.txt --show-lines --line-count 5
-File: example.txt
-Showing 5 lines
-
-# Execute error command
-$ python mycli.py error --code 42
-Simulating error with code 42
-# Exits with code 42
+# Run advanced command
+python your_script.py run-advanced --file-name data.txt --mode write --wait 1.5 --verbose
 ```
 
 ## Argument Resolution
@@ -201,15 +134,6 @@ class MyCLI(AutoCLI):
         return True  # Indicates success (exit code 0)
 ```
 
-Command-line execution examples:
-
-```bash
-$ python mycli.py command --name test
-Name: test
-
-$ python mycli.py foo-bar --option custom
-Option: custom
-```
 
 ### Using Type Annotations
 
@@ -230,39 +154,8 @@ class MyCLI(AutoCLI):
         if args.flag:
             print("Flag is set")
         return True
-        
-    # Async methods are also supported and automatically detected
-    class ProcessArgs(BaseModel):
-        file: str = param(..., l="--file", s="-f")
-        count: int = param(1, l="--count", s="-c")
-    
-    # Async command using type annotation
-    async def run_process(self, args: ProcessArgs):
-        import asyncio
-        print(f"Processing {args.file} {args.count} times")
-        for i in range(args.count):
-            await asyncio.sleep(0.5)
-            print(f"Iteration {i+1}/{args.count}")
-        return "Processing complete"
 ```
 
-Async methods are automatically detected and properly executed using `asyncio.run()`. They follow the same argument resolution rules as regular methods, including naming conventions:
-
-```python
-class AsyncCLI(AutoCLI):
-    # Args class by naming convention
-    class FetchArgs(BaseModel):
-        url: str = param(..., l="--url", s="-u", description="URL to fetch")
-        timeout: int = param(30, l="--timeout", s="-t", description="Timeout in seconds")
-    
-    # Async command using naming convention
-    async def run_fetch(self, args):
-        import asyncio
-        print(f"Fetching {args.url} with timeout {args.timeout}s")
-        # Simulating network request
-        await asyncio.sleep(1) 
-        return f"Content from {args.url}"
-```
 
 ### Resolution Priority
 
@@ -292,22 +185,8 @@ class MyCLI(AutoCLI):
         return True
 ```
 
-This command will use `CustomArgs` (from type annotation) instead of `CommandArgs` (from naming convention), with a warning about the detected conflict:
+This command will use `CustomArgs` (from type annotation) instead of `CommandArgs` (from naming convention), with a warning about the detected conflict.
 
-```
-Warning: Method 'run_command' has both a type annotation (CustomArgs) and a naming convention class (CommandArgs). The type annotation takes precedence.
-```
-
-This warning helps identify potential confusion in your CLI code structure. It's generally recommended to avoid such conflicts for code clarity by either:
-1. Using consistent naming conventions
-2. Removing the naming convention class when using type annotations
-3. Making the naming convention class and type annotation class the same
-
-The warning appears during the initialization of the CLI, so you'll see it when you create a CLI instance, not when running specific commands.
-
-## Common Arguments Base Class
-
-`AutoCLI.CommonArgs` is a class that inherits from Pydantic's `BaseModel`. This means you can use it interchangeably with `BaseModel` while getting the benefits of common arguments across commands.
 
 ## Development and Testing
 
