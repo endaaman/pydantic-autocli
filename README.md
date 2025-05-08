@@ -191,14 +191,14 @@ This command will use `CustomArgs` (from type annotation) instead of `CommandArg
 ## Development and Testing
 
 ```bash
-# Install development dependencies
-uv sync --dev
+# Install all dependencies
+uv sync
 
 # Run tests
 uv run pytest
 
-# Or using taskipy
-uv run task test
+# Run tests with coverage
+uv run task coverage
 ```
 
 ## Examples

@@ -508,13 +508,20 @@ class AutoCLI:
             logger.error(f"ERROR in command execution: {e}")
             logger.debug("", exc_info=True)
 
+        # Validate and handle the result type
         if result is None:
             code = 0
-        elif result is True:
-            code = 0
-        elif result is False:
-            code = 1
-        else:
+        elif isinstance(result, bool):
+            code = 0 if result else 1
+        elif isinstance(result, int):
             code = result
+        else:
+            # Try to convert to int for NumPy/PyTorch/other numeric types
+            try:
+                code = int(result)
+            except (ValueError, TypeError):
+                # For unconvertible types, treat as failure
+                logger.warning(f"Unexpected return type: {type(result)}. Using 1.")
+                code = 1
             
         sys.exit(code)

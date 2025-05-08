@@ -346,6 +346,177 @@ class CLIArgumentParsingTest(unittest.TestCase):
         self.assertEqual(mock_argv_args[6], "-b")            # Short form
         self.assertEqual(mock_argv_args[7], "--verbose")     # Long form
 
+    @patch('sys.argv')
+    def test_pre_common_hook(self, mock_argv):
+        """Test that the pre_common hook is executed before command execution."""
+        
+        class PreCommonCLI(AutoCLI):
+            class TestArgs(AutoCLI.CommonArgs):
+                value: str = param("default", l="--value", s="-v")
+            
+            def __init__(self):
+                self.pre_common_called = False
+                super().__init__()
+            
+            def pre_common(self, args):
+                # Store information to verify this was called
+                self.pre_common_called = True
+                self.pre_common_args = args
+            
+            def run_test(self, args):
+                return f"Value: {args.value}, pre_common_called: {self.pre_common_called}"
+        
+        # Mock command line arguments
+        mock_argv.__getitem__.side_effect = lambda idx: [
+            "test_script.py", "test", "--value", "test-value"
+        ][idx]
+        mock_argv.__len__.return_value = 4
+        
+        # Create CLI instance
+        cli = PreCommonCLI()
+        
+        # Create a method to capture the result
+        result_capture = MagicMock()
+        
+        # Patch the run_test method to capture its result
+        original_method = cli.run_test
+        cli.run_test = lambda args: result_capture(original_method(args)) or True
+        
+        # Run the CLI (with exit patched to prevent test termination)
+        with patch('sys.exit'):
+            cli.run()
+        
+        # Verify pre_common was called
+        self.assertTrue(cli.pre_common_called)
+        self.assertEqual(cli.pre_common_args.value, "test-value")
+        
+        # Verify the method was called with correct args
+        result_capture.assert_called_once()
+        args, _ = result_capture.call_args
+        self.assertEqual(args[0], "Value: test-value, pre_common_called: True")
+    
+    @patch('sys.argv')
+    def test_pre_common_with_modifications(self, mock_argv):
+        """Test that the pre_common hook can modify arguments before command execution."""
+        
+        class ModifyingPreCommonCLI(AutoCLI):
+            class TestArgs(AutoCLI.CommonArgs):
+                value: str = param("default", l="--value", s="-v")
+                modified: bool = param(False, l="--modified")
+            
+            def pre_common(self, args):
+                # Modify the args before command execution
+                args.modified = True
+                args.value = f"MODIFIED_{args.value}"
+            
+            def run_test(self, args):
+                return f"Value: {args.value}, Modified: {args.modified}"
+        
+        # Mock command line arguments
+        mock_argv.__getitem__.side_effect = lambda idx: [
+            "test_script.py", "test", "--value", "original"
+        ][idx]
+        mock_argv.__len__.return_value = 4
+        
+        # Create CLI instance
+        cli = ModifyingPreCommonCLI()
+        
+        # Create a method to capture the result
+        result_capture = MagicMock()
+        
+        # Patch the run_test method to capture its result
+        original_method = cli.run_test
+        cli.run_test = lambda args: result_capture(original_method(args)) or True
+        
+        # Run the CLI (with exit patched to prevent test termination)
+        with patch('sys.exit'):
+            cli.run()
+        
+        # Verify the method was called with modified args
+        result_capture.assert_called_once()
+        args, _ = result_capture.call_args
+        self.assertEqual(args[0], "Value: MODIFIED_original, Modified: True")
+    
+    @patch('sys.argv')
+    def test_edge_case_empty_args(self, mock_argv):
+        """Test handling a command with no arguments."""
+        
+        class EmptyArgsCLI(AutoCLI):
+            class EmptyArgs(AutoCLI.CommonArgs):
+                # No arguments defined
+                pass
+            
+            def run_empty(self, args):
+                return "Command with empty args executed successfully"
+        
+        # Mock command line arguments - just the command, no args
+        mock_argv.__getitem__.side_effect = lambda idx: [
+            "test_script.py", "empty"
+        ][idx]
+        mock_argv.__len__.return_value = 2
+        
+        # Create CLI instance
+        cli = EmptyArgsCLI()
+        
+        # Create a method to capture the result
+        result_capture = MagicMock()
+        
+        # Patch the run_empty method to capture its result
+        original_method = cli.run_empty
+        cli.run_empty = lambda args: result_capture(original_method(args)) or True
+        
+        # Run the CLI (with exit patched to prevent test termination)
+        with patch('sys.exit'):
+            cli.run()
+        
+        # Verify the method was called with empty args
+        result_capture.assert_called_once()
+        args, _ = result_capture.call_args
+        self.assertEqual(args[0], "Command with empty args executed successfully")
+    
+    @patch('sys.argv')
+    def test_edge_case_no_common_args(self, mock_argv):
+        """Test a CLI class that doesn't use CommonArgs."""
+        
+        class NoCommonArgsCLI(AutoCLI):
+            # Override the default CommonArgs with a custom base class
+            class CustomBaseArgs(BaseModel):
+                debug: bool = param(False, l="--debug", s="-d")
+            
+            # Set as the default args class
+            CommonArgs = CustomBaseArgs
+            
+            class TestArgs(CustomBaseArgs):
+                value: str = param("default", l="--value", s="-v")
+            
+            def run_test(self, args):
+                return f"Value: {args.value}, Debug: {args.debug}"
+        
+        # Mock command line arguments
+        mock_argv.__getitem__.side_effect = lambda idx: [
+            "test_script.py", "test", "--value", "custom-base", "--debug"
+        ][idx]
+        mock_argv.__len__.return_value = 5
+        
+        # Create CLI instance
+        cli = NoCommonArgsCLI()
+        
+        # Create a method to capture the result
+        result_capture = MagicMock()
+        
+        # Patch the run_test method to capture its result
+        original_method = cli.run_test
+        cli.run_test = lambda args: result_capture(original_method(args)) or True
+        
+        # Run the CLI (with exit patched to prevent test termination)
+        with patch('sys.exit'):
+            cli.run()
+        
+        # Verify the method was called with args using the custom base
+        result_capture.assert_called_once()
+        args, _ = result_capture.call_args
+        self.assertEqual(args[0], "Value: custom-base, Debug: True")
+
 
 if __name__ == "__main__":
     unittest.main() 
