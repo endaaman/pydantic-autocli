@@ -28,7 +28,7 @@ from pydantic_autocli import AutoCLI, param
 
 class MyCLI(AutoCLI):
     class CommonArgs(AutoCLI.CommonArgs):
-        # Common arguments for all commands and act as fallback
+        # Common arguments for all commands and act as a fallback
         verbose: bool = param(False, l="--verbose", s="-v", description="Enable detailed output")
         seed: int = 42
 
