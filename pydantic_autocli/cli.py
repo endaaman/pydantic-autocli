@@ -523,5 +523,4 @@ class AutoCLI:
                 # For unconvertible types, treat as failure
                 logger.warning(f"Unexpected return type: {type(result)}. Using 1.")
                 code = 1
-            
         sys.exit(code)

@@ -13,7 +13,7 @@ class SimpleCLI(AutoCLI):
 
     class GreetArgs(CommonArgs):
         # Arguments specific to 'greet' command
-        name: str = param("World", l="--name", s="-n")
+        name: str = param("World", l="--name", s="-n", pattern=r"^[a-zA-Z]+$")
         count: int = param(1, l="--count", s="-c")
 
     def run_greet(self, a:GreetArgs):

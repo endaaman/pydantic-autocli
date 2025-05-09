@@ -22,22 +22,13 @@ pip install pydantic-autocli
 
 pydantic-autocli provides multiple ways to define CLI arguments and commands.
 
-```python
+```python:cli.py
 from pydantic import BaseModel
-from pydantic_autocli import AutoCLI, param
+from pydantic_autocli import AutoCLI
 
 class MyCLI(AutoCLI):
-    class CommonArgs(AutoCLI.CommonArgs):
-        # Common arguments for all commands and act as a fallback
-        verbose: bool = param(False, l="--verbose", s="-v", description="Enable detailed output")
-        seed: int = 42
-
-    # Executed commonly for all subcommands
-    def pre_common(self, args:CommonArgs):
-        print('Using seed: {args.seed}')
-        
     # Standard Pydantic notation
-    class SimpleArgs(CommonArgs):
+    class CustomArgs(BaseModel):
         # Required parameter (no default value)
         required_value: int
         # Optional parameter (with default value)
@@ -45,32 +36,68 @@ class MyCLI(AutoCLI):
         # Array parameter
         names: list[str] = []
         
-    # This method will automatically use SimpleArgs
-    # Args class selection rule: run_simple -> SimpleArgs (by naming convention)
-    def run_simple(self, args):
-        """Execute simple command"""
+    # This will be triggered by `python xxx.py simple` command
+    # Args class is explicitly specified (by type annotation)
+    def run_simple(self, args:CustomArgs):
         print(f"Required: {args.required_value}")
         print(f"Optional: {args.optional_value}")
         print(f"Names: {args.names}")
 
-    class CustomAdvancedArgs(CommonArgs):
+if __name__ == "__main__":
+    cli = MyCLI()
+    cli.run()
+```
+
+pydantic-autocli uses standard `argparse` under the hood, so command-line arguments follow familiar patterns:
+
+```bash
+# Run simple command with required parameter
+python your_script.py simple --required-value 42 --optional-value 100 
+
+# Run simple command with all parameters (multiple ways to specify arrays)
+python your_script.py simple --required-value 42 --names John --names Jane
+
+# Array values can also be provided as space-delimited in a single argument
+python your_script.py simple --required-value 42 --names John Jane Bob
+```
+
+
+## advanced Usage
+
+
+```python
+from pydantic import Field
+from pydantic_autocli import AutoCLI, param
+
+class MyCLI(AutoCLI):
+    # Common arguments for all commands and act as a fallback
+    class CommonArgs(AutoCLI.CommonArgs):
+        # `param` `param()` is syntax sugar for `Field()`
+        verbose: bool = param(False, l="--verbose", s="-v", description="Enable detailed output")
+        # Field can also be used
+        seed: int = Field(42, json_schema_extra={"l": "--seed"})
+
+    # Executed commonly for all subcommands
+    def pre_common(self, args:CommonArgs):
+        print(f'Using seed: {args.seed}')
+
+    class VeryAdvancedArgs(CommonArgs):
         # file_name becomes --file-name in command line 
-        file_name: str
+        file_name: str = param(..., l="--name", pattern=r"^[a-zA-Z]+\.(txt|json|yaml)$")
         # Restrict choices
         mode: str = param("read", l="--mode", choices=["read", "write", "append"])
-        wait: float = 0.5
+        # You can use float, too
+        wait: float = Field(0.5, json_schema_extra={"l": "--wait", "s": "-w"})
 
-    # This method will use CustomAdvancedArgs
-    # Args class is explicitly specified (by type annotation)
+
+    # This will be triggered by `python xxx.py very-advanced` command
+    # Args class selection rule: run_very_advanced -> VeryAdvancedArgs (by naming convention)
     # This is an async method that can be awaited
-    async def run_advanced(self, args:CustomAdvancedArgs):
-        """Execute advanced command"""
+    async def run_very_advanced(self, args):
+        print(f"File name: {args.file_name}")
         print(f"Mode: {args.mode}")
-        print(f"Filenames: {args.file_names}")
-        print(f"Numbers: {args.numbers}")
-
-        import asyncio
-        print(f"Awaiting for {args.wait}s..")
+        
+        print(f"Waiting for {args.wait}s..")
         await asyncio.sleep(args.wait)
 
         if args.verbose:
@@ -84,28 +111,42 @@ class MyCLI(AutoCLI):
 
 if __name__ == "__main__":
     cli = MyCLI()
-    cli.run()  # Uses sys.argv by default    
-    # cli.run(sys.argv)  # Explicitly pass sys.argv
-
+    # Uses sys.argv by default    
+    cli.run()  
+    # Explicitly pass sys.argv
+    cli.run(sys.argv)  
     # Pass custom arguments
-    # cli.run(["program_name", "command", "--value", "value1", "--flag"])    
+    cli.run(["program_name", "command", "--value", "value1", "--flag"])    
 ```
 
 
-### Command-line execution examples
+ `param` passes all CLI-specific options (like `s` for short form, `l` for long form) to Field's json_schema_extra.
+
 
 ```bash
-# Run simple command with required parameter
-python your_script.py run-simple --required-value 42
-
-# Run simple command with all parameters
-python your_script.py run-simple --required-value 42 --optional-value 100 --names "John Jane"
-
-# Run advanced command
-python your_script.py run-advanced --file-name data.txt --mode write --wait 1.5 --verbose
+# Run very-advanced command
+python your_script.py very-advanced --file-name data.txt --mode write --wait 1.5 --verbose
 ```
 
 ## Argument Resolution
+
+### Using Type Annotations
+
+You can directly specify the argument class using type annotations:
+
+```python
+from pydantic import BaseModel
+from pydantic_autocli import AutoCLI, param
+
+class MyCLI(AutoCLI):
+    class CustomArgs(AutoCLI.CommonArgs):
+        value: int = param(42, l="--value", s="-v")
+    
+    # Use type annotation to specify args class
+    def run_command(self, args: CustomArgs):
+        print(f"Value: {args.value}")
+```
+
 
 ### Using Naming Convention
 
@@ -123,7 +164,6 @@ class MyCLI(AutoCLI):
     
     def run_command(self, args):
         print(f"Name: {args.name}")
-        return True  # Indicates success (exit code 0)
         
     # Two-word command example
     class FooBarArgs(AutoCLI.CommonArgs):
@@ -131,29 +171,6 @@ class MyCLI(AutoCLI):
     
     def run_foo_bar(self, args):
         print(f"Option: {args.option}")
-        return True  # Indicates success (exit code 0)
-```
-
-
-### Using Type Annotations
-
-You can directly specify the argument class using type annotations:
-
-```python
-from pydantic import BaseModel
-from pydantic_autocli import AutoCLI, param
-
-class MyCLI(AutoCLI):
-    class CustomArgs(BaseModel):
-        value: int = param(42, l="--value", s="-v")
-        flag: bool = param(False, l="--flag", s="-f")
-    
-    # Use type annotation to specify args class
-    def run_command(self, args: CustomArgs):
-        print(f"Value: {args.value}")
-        if args.flag:
-            print("Flag is set")
-        return True
 ```
 
 
