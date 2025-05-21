@@ -8,6 +8,7 @@ import typing
 from typing import Callable, Type, get_type_hints, Optional, Dict, Any, List, Union
 import argparse
 import logging
+import traceback
 
 from pydantic import BaseModel, Field
 
@@ -507,6 +508,7 @@ class AutoCLI:
         except Exception as e:
             logger.error(f"ERROR in command execution: {e}")
             logger.debug("", exc_info=True)
+            traceback.print_exc()
 
         # Validate and handle the result type
         if result is None:
