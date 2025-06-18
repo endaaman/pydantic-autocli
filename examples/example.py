@@ -17,7 +17,7 @@ class SimpleCLI(AutoCLI):
         count: int = param(1, l="--count", s="-c")
 
     def run_greet(self, a:GreetArgs):
-        """Run the greet command"""
+        """Greet someone with a customizable message"""
         print(type(a))
         for _ in range(a.count):
             print(f"Hello, {a.name}!")
@@ -32,7 +32,7 @@ class SimpleCLI(AutoCLI):
         mode: str = param("text", l="--mode", s="-m", choices=["text", "binary", "append"])
 
     def run_file(self, a:CustomArgs):
-        """Run the file command"""
+        """Process a file with various modes and options"""
         print(type(a))
         print(f"File: {a.filename}, Mode: {a.mode}, Write: {a.write_mode}")
         if os.path.exists(a.filename):

@@ -197,6 +197,8 @@ class AutoCLI:
 
         # Dictionary to store method name -> args class mapping
         self.method_args_mapping = {}
+        # Store subparsers for detailed help generation
+        self.subparsers_info = {}
 
         # List all methods that start with run_
         run_methods = [key for key in dir(self) if key.startswith("run_")]
@@ -224,11 +226,58 @@ class AutoCLI:
             sub_parser = sub_parsers.add_parser(subcommand_name, add_help=True)
             replacer = register_cls_to_parser(args_class, sub_parser)
             sub_parser.set_defaults(__function=name, __cls=args_class, __replacer=replacer)
+            
+            # Store subparser info for detailed help
+            method_func = getattr(self, key)
+            method_doc = method_func.__doc__.strip() if method_func.__doc__ else None
+            self.subparsers_info[subcommand_name] = {
+                'parser': sub_parser,
+                'method_name': name,
+                'description': method_doc
+            }
 
             logger.debug(f"Registered parser for command '{subcommand_name}' with replacer: {replacer}")
 
         logger.debug(f"Final method_args_mapping: {[(k, v.__name__) for k, v in self.method_args_mapping.items()]}")
 
+    def print_detailed_help(self):
+        """Print detailed help including all subcommands and their arguments."""
+        import io
+        import sys
+        
+        # Print main usage
+        self.main_parser.print_help()
+        print()
+        
+        if not self.subparsers_info:
+            return
+            
+        print("Available commands:")
+        for subcommand_name, info in self.subparsers_info.items():
+            desc = info['description'] or "No description available"
+            # Limit description to first line for overview
+            first_line = desc.split('\n')[0] if desc else "No description available"
+            print(f"  {subcommand_name:<12} - {first_line}")
+        
+        print("\nCommand details:")
+        for subcommand_name, info in self.subparsers_info.items():
+            print(f"\n{'=' * 3} {subcommand_name} {'=' * 3}")
+            
+            # Capture subparser help to string buffer
+            old_stdout = sys.stdout
+            help_buffer = io.StringIO()
+            sys.stdout = help_buffer
+            
+            try:
+                info['parser'].print_help()
+            except SystemExit:
+                # print_help() calls sys.exit(), we need to catch it
+                pass
+            finally:
+                sys.stdout = old_stdout
+            
+            help_text = help_buffer.getvalue()
+            print(help_text.rstrip())
 
     def _get_type_annotation_for_method(self, method_key) -> Optional[Type[BaseModel]]:
         """Extract type annotation for the run_* method parameter (other than self).
@@ -447,12 +496,12 @@ class AutoCLI:
         # Check if help was requested
         if hasattr(self.raw_args, 'help') and self.raw_args.help:
             logger.debug("Help requested via --help/-h")
-            self.main_parser.print_help()
+            self.print_detailed_help()
             exit(0)
 
         if not hasattr(self.raw_args, "__function"):
-            logger.debug("No function specified, showing help")
-            self.main_parser.print_help()
+            logger.debug("No function specified, showing detailed help")
+            self.print_detailed_help()
             exit(0)
 
         args_dict = self.raw_args.__dict__
