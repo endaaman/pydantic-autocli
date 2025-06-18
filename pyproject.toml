@@ -41,6 +41,7 @@ clean = "rm -rf build/ dist/ *.egg-info/ __pycache__/ && find . -name '*.pyc' -d
 
 [dependency-groups]
 dev = [
+    "ipython>=8.18.1",
     "pytest>=7.4.4",
     "pytest-cov>=6.0.0",
     "taskipy>=1.14.1",
