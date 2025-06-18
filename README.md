@@ -232,6 +232,22 @@ python examples/example.py greet --verbose
 uv run task example file --file README.md
 ```
 
+## Claude Code Integration
+
+If you're using Claude Code with your pydantic-autocli application, add this section to your project's `CLAUDE.md`:
+
+```markdown
+## AutoCLI Usage
+
+Key patterns:
+- `def run_foo_bar(self, args):` → `python script.py foo-bar`
+- `def prepare(self, args):` → shared initialization  
+- `class FooBarArgs(AutoCLI.CommonArgs):` → command arguments
+- Return `True`/`None` (success), `False` (fail), `int` (exit code)
+
+For details: `python your_script.py --help`
+```
+
 ## License
 
 See LICENSE file.

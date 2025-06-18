@@ -4,7 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## プロジェクト概要
 
-pydantic-autocliは、PydanticモデルからCLIアプリケーションを自動生成するPythonライブラリです。Pydanticモデルのフィールドをコマンドライン引数に変換し、サブコマンド、型検証、非同期処理をサポートします。
+pydantic-autocliは、PydanticモデルからCLIアプリケーションを自動生成するPythonライブラリです。
+
+## AutoCLI Usage
+
+Basic patterns are documented in README.md "Claude Code Integration" section.
+For detailed patterns: Use any pydantic-autocli script with `--help` flag.
 
 ## 開発コマンド
 

@@ -261,13 +261,13 @@ class AutoCLI:
         self.main_parser.print_help()
         print()
         
-        # Print pydantic-autocli usage patterns
-        print("pydantic-autocli patterns:")
-        print("  • Method run_foo_bar() → command 'foo-bar'")
-        print("  • Method run_command() → CommandArgs class (or use type annotations)")
-        print("  • Override prepare(args) for shared initialization")
-        print("  • Call cli.run() to start the application")
-        print("  • Return None/True (success), False (fail), or int (exit code)")
+        # Print AutoCLI usage patterns
+        print("AutoCLI patterns:")
+        print("  • def run_foo_bar(self, args): → python script.py foo-bar")
+        print("  • def prepare(self, args): → shared initialization")
+        print("  • class FooBarArgs(AutoCLI.CommonArgs): → command arguments")
+        print("  • param(..., l='--long', s='-s') → custom argument options")
+        print("  • return True/None (success), False (fail), int (exit code)")
         print()
         
         if not self.subparsers_info:
@@ -521,8 +521,8 @@ class AutoCLI:
             exit(0)
 
         if not hasattr(self.raw_args, "__function"):
-            logger.debug("No function specified, showing detailed help")
-            self.print_detailed_help()
+            logger.debug("No function specified, showing basic help")
+            self.main_parser.print_help()
             exit(0)
 
         args_dict = self.raw_args.__dict__
