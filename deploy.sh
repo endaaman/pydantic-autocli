@@ -13,4 +13,4 @@ rm -rf build/ dist/ *.egg-info/
 # Upload to PyPI
 /usr/bin/python -m twine upload dist/*
 
-echo "Deployment completed successfully!" 
+echo "Deployment completed successfully!"
