@@ -191,6 +191,8 @@ class AutoCLI:
         logger.debug(f"Default args class: {self.default_args_class.__name__}")
 
         self.main_parser = argparse.ArgumentParser(add_help=False)
+        # Add custom help arguments to main parser only
+        self.main_parser.add_argument('-h', '--help', action='store_true', help='show this help message and exit')
         sub_parsers = self.main_parser.add_subparsers()
 
         # Dictionary to store method name -> args class mapping
@@ -218,8 +220,8 @@ class AutoCLI:
             # Store the mapping for later use
             self.method_args_mapping[name] = args_class
 
-            # Create subparser and register arguments
-            sub_parser = sub_parsers.add_parser(subcommand_name, parents=[self.main_parser])
+            # Create subparser without parents to avoid help conflicts
+            sub_parser = sub_parsers.add_parser(subcommand_name, add_help=True)
             replacer = register_cls_to_parser(args_class, sub_parser)
             sub_parser.set_defaults(__function=name, __cls=args_class, __replacer=replacer)
 
@@ -441,6 +443,12 @@ class AutoCLI:
 
         self.raw_args = self.main_parser.parse_args(argv[1:])
         logger.debug(f"Parsed args: {self.raw_args}")
+
+        # Check if help was requested
+        if hasattr(self.raw_args, 'help') and self.raw_args.help:
+            logger.debug("Help requested via --help/-h")
+            self.main_parser.print_help()
+            exit(0)
 
         if not hasattr(self.raw_args, "__function"):
             logger.debug("No function specified, showing help")
