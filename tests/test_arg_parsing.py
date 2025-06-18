@@ -347,24 +347,24 @@ class CLIArgumentParsingTest(unittest.TestCase):
         self.assertEqual(mock_argv_args[7], "--verbose")     # Long form
 
     @patch('sys.argv')
-    def test_pre_common_hook(self, mock_argv):
-        """Test that the pre_common hook is executed before command execution."""
+    def test_prepare_hook(self, mock_argv):
+        """Test that the prepare hook is executed before command execution."""
         
-        class PreCommonCLI(AutoCLI):
+        class PrepareCLI(AutoCLI):
             class TestArgs(AutoCLI.CommonArgs):
                 value: str = param("default", l="--value", s="-v")
             
             def __init__(self):
-                self.pre_common_called = False
+                self.prepare_called = False
                 super().__init__()
             
-            def pre_common(self, args):
+            def prepare(self, args):
                 # Store information to verify this was called
-                self.pre_common_called = True
-                self.pre_common_args = args
+                self.prepare_called = True
+                self.prepare_args = args
             
             def run_test(self, args):
-                return f"Value: {args.value}, pre_common_called: {self.pre_common_called}"
+                return f"Value: {args.value}, prepare_called: {self.prepare_called}"
         
         # Mock command line arguments
         mock_argv.__getitem__.side_effect = lambda idx: [
@@ -373,7 +373,7 @@ class CLIArgumentParsingTest(unittest.TestCase):
         mock_argv.__len__.return_value = 4
         
         # Create CLI instance
-        cli = PreCommonCLI()
+        cli = PrepareCLI()
         
         # Create a method to capture the result
         result_capture = MagicMock()
@@ -386,25 +386,25 @@ class CLIArgumentParsingTest(unittest.TestCase):
         with patch('sys.exit'):
             cli.run()
         
-        # Verify pre_common was called
-        self.assertTrue(cli.pre_common_called)
-        self.assertEqual(cli.pre_common_args.value, "test-value")
+        # Verify prepare was called
+        self.assertTrue(cli.prepare_called)
+        self.assertEqual(cli.prepare_args.value, "test-value")
         
         # Verify the method was called with correct args
         result_capture.assert_called_once()
         args, _ = result_capture.call_args
-        self.assertEqual(args[0], "Value: test-value, pre_common_called: True")
+        self.assertEqual(args[0], "Value: test-value, prepare_called: True")
     
     @patch('sys.argv')
-    def test_pre_common_with_modifications(self, mock_argv):
-        """Test that the pre_common hook can modify arguments before command execution."""
+    def test_prepare_with_modifications(self, mock_argv):
+        """Test that the prepare hook can modify arguments before command execution."""
         
-        class ModifyingPreCommonCLI(AutoCLI):
+        class ModifyingPrepareCLI(AutoCLI):
             class TestArgs(AutoCLI.CommonArgs):
                 value: str = param("default", l="--value", s="-v")
                 modified: bool = param(False, l="--modified")
             
-            def pre_common(self, args):
+            def prepare(self, args):
                 # Modify the args before command execution
                 args.modified = True
                 args.value = f"MODIFIED_{args.value}"
@@ -419,7 +419,7 @@ class CLIArgumentParsingTest(unittest.TestCase):
         mock_argv.__len__.return_value = 4
         
         # Create CLI instance
-        cli = ModifyingPreCommonCLI()
+        cli = ModifyingPrepareCLI()
         
         # Create a method to capture the result
         result_capture = MagicMock()

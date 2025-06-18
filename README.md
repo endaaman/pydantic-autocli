@@ -1,6 +1,7 @@
 # pydantic-autocli
 
 [![CI](https://github.com/endaaman/pydantic-autocli/workflows/CI/badge.svg)](https://github.com/endaaman/pydantic-autocli/actions)
+[![codecov](https://codecov.io/gh/endaaman/pydantic-autocli/branch/master/graph/badge.svg)](https://codecov.io/gh/endaaman/pydantic-autocli)
 
 Automatically generate sub-command based CLI applications from Pydantic models.
 
@@ -80,7 +81,7 @@ class MyCLI(AutoCLI):
         seed: int = Field(42, json_schema_extra={"l": "--seed"})
 
     # Executed commonly for all subcommands
-    def pre_common(self, args:CommonArgs):
+    def prepare(self, args:CommonArgs):
         print(f'Using seed: {args.seed}')
 
     class VeryAdvancedArgs(CommonArgs):
