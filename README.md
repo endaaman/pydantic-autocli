@@ -1,5 +1,7 @@
 # pydantic-autocli
 
+[![CI](https://github.com/endaaman/pydantic-autocli/workflows/CI/badge.svg)](https://github.com/endaaman/pydantic-autocli/actions)
+
 Automatically generate sub-command based CLI applications from Pydantic models.
 
 ## Installation
