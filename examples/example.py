@@ -10,6 +10,11 @@ class SimpleCLI(AutoCLI):
     class CommonArgs(AutoCLI.CommonArgs):
         # Common arguments for all commands
         verbose: bool = param(False, description="Enable verbose output")
+    
+    def prepare(self, args):
+        """Common initialization for all commands"""
+        if args.verbose:
+            print("[DEBUG] Verbose mode enabled")
 
     class GreetArgs(CommonArgs):
         # Arguments specific to 'greet' command

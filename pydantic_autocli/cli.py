@@ -169,8 +169,20 @@ class AutoCLI:
 
     def _pre_common(self, a):
         """Execute pre-common hook if defined."""
+        import warnings
+        
+        # Check for new prepare() method first
+        prepare = getattr(self, "prepare", None)
         pre_common = getattr(self, "pre_common", None)
-        if pre_common:
+        
+        if prepare:
+            prepare(a)
+        elif pre_common:
+            warnings.warn(
+                "pre_common() is deprecated. Use prepare() instead for shared initialization.",
+                DeprecationWarning,
+                stacklevel=2
+            )
             pre_common(a)
 
     def __init__(self):
@@ -247,6 +259,15 @@ class AutoCLI:
         
         # Print main usage
         self.main_parser.print_help()
+        print()
+        
+        # Print pydantic-autocli usage patterns
+        print("pydantic-autocli patterns:")
+        print("  • Method run_foo_bar() → command 'foo-bar'")
+        print("  • Method run_command() → CommandArgs class (or use type annotations)")
+        print("  • Override prepare(args) for shared initialization")
+        print("  • Call cli.run() to start the application")
+        print("  • Return None/True (success), False (fail), or int (exit code)")
         print()
         
         if not self.subparsers_info:
