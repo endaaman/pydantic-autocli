@@ -531,6 +531,6 @@ class AutoCLI:
                 code = int(result)
             except (ValueError, TypeError):
                 # For unconvertible types, treat as failure
-                logger.warning(f"Unexpected return type: {type(result)}. Using 1.")
+                logger.warning(f"Unexpected return type: {type(result)}. Command methods should return None, bool, or int (status code). Using status code 1.")
                 code = 1
         sys.exit(code)
