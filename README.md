@@ -123,7 +123,7 @@ if __name__ == "__main__":
 ```
 
 
- `param` passes all CLI-specific options (like `s` for short form, `l` for long form) to Field's json_schema_extra.
+`param` passes all CLI-specific options (like `s` for short form, `l` for long form) to Field's json_schema_extra. All other options (like `ge`, `le`, `gt`, `lt`, `min_length`, `max_length`, `pattern`) are passed directly to Field for validation.
 
 
 ```bash
