@@ -13,7 +13,7 @@ authors = [
     {name = "Ken Enda", email = "ken@endaaman.com"},
 ]
 dependencies = [
-    "pydantic>=1.8.0",
+    "pydantic<2.12",
 ]
 
 [project.urls]
