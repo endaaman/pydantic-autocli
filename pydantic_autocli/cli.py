@@ -203,8 +203,8 @@ class AutoCLI:
         logger.debug(f"Default args class: {self.default_args_class.__name__}")
 
         self.main_parser = argparse.ArgumentParser(add_help=False)
-        # Add custom help arguments to main parser only
-        self.main_parser.add_argument('-h', '--help', action='store_true', help='show this help message and exit')
+        # Add custom help argument to main parser only (without -h to allow user-defined -h args)
+        self.main_parser.add_argument('--help', action='store_true', help='show this help message and exit')
         sub_parsers = self.main_parser.add_subparsers()
 
         # Dictionary to store method name -> args class mapping
@@ -234,8 +234,8 @@ class AutoCLI:
             # Store the mapping for later use
             self.method_args_mapping[name] = args_class
 
-            # Create subparser without parents to avoid help conflicts
-            sub_parser = sub_parsers.add_parser(subcommand_name, add_help=True)
+            # Create subparser without -h to allow user-defined -h args
+            sub_parser = sub_parsers.add_parser(subcommand_name, add_help=False)
             replacer = register_cls_to_parser(args_class, sub_parser)
             sub_parser.set_defaults(__function=name, __cls=args_class, __replacer=replacer)
             

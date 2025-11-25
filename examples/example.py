@@ -10,7 +10,7 @@ class SimpleCLI(AutoCLI):
     class CommonArgs(AutoCLI.CommonArgs):
         # Common arguments for all commands
         verbose: bool = param(False, description="Enable verbose output")
-    
+
     def prepare(self, args):
         """Common initialization for all commands"""
         if args.verbose:
@@ -35,6 +35,7 @@ class SimpleCLI(AutoCLI):
         filename: str = param(..., l="--file", s="-f")
         write_mode: bool = param(False, l="--write", s="-w")
         mode: str = param("text", l="--mode", s="-m", choices=["text", "binary", "append"])
+        hi: bool = param(False, s="-h")
 
     def run_file(self, a:CustomArgs):
         """Process a file with various modes and options"""
