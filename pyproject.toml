@@ -13,7 +13,7 @@ authors = [
     {name = "Ken Enda", email = "ken@endaaman.com"},
 ]
 dependencies = [
-    "pydantic<2.12",
+    "pydantic>=2",
 ]
 
 [project.urls]
@@ -26,13 +26,6 @@ include = ["examples/*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = "test_*.py"
-
-[project.optional-dependencies]
-dev = [
-    "pytest>=7.4.4",
-    "pytest-cov>=6.0.0",
-    "taskipy>=1.14.1",
-]
 
 [tool.taskipy.tasks]
 coverage = "pytest --cov=pydantic_autocli --cov-report=term-missing --disable-warnings"
