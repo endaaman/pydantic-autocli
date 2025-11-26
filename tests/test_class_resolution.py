@@ -195,21 +195,24 @@ class CLIClassResolutionTest(unittest.TestCase):
     @patch('asyncio.run')  # Patch asyncio.run to capture the coroutine
     def test_async_type_annotation(self, mock_asyncio_run):
         """Test that type annotations work correctly with async methods."""
-        
+
         class AsyncCLI(AutoCLI):
             # Type annotation class
             class CustomArgs(BaseModel):
                 delay: float = param(0.1, l="--delay", s="-d")
                 message: str = param("Hello", l="--message", s="-m")
-            
+
             # Async method with type annotation
             async def run_async_command(self, args: CustomArgs):
                 # In a real implementation, we would await something here
                 return f"Async {args.message} with delay {args.delay}"
-        
-        # Setup asyncio.run to return the result directly
+
+        # Setup asyncio.run to close the coroutine and return the result
         result = "Async World with delay 0.5"
-        mock_asyncio_run.return_value = result
+        def close_and_return(coro):
+            coro.close()
+            return result
+        mock_asyncio_run.side_effect = close_and_return
         
         # Create CLI instance
         cli = AsyncCLI()
@@ -228,13 +231,13 @@ class CLIClassResolutionTest(unittest.TestCase):
     @patch('asyncio.run')  # Patch asyncio.run to capture the coroutine
     def test_async_naming_convention(self, mock_asyncio_run):
         """Test that naming convention works correctly with async methods."""
-        
+
         class AsyncNamingCLI(AutoCLI):
             # Naming convention class
             class AsyncCommandArgs(BaseModel):
                 count: int = param(1, l="--count", s="-c")
                 verbose: bool = param(False, l="--verbose", s="-v")
-            
+
             # Async method using naming convention
             async def run_async_command(self, args):
                 # In a real implementation, we would await something here
@@ -242,10 +245,13 @@ class CLIClassResolutionTest(unittest.TestCase):
                 if args.verbose:
                     result += " (verbose)"
                 return result
-        
-        # Setup asyncio.run to return the result directly
+
+        # Setup asyncio.run to close the coroutine and return the result
         result = "Count: 5 (verbose)"
-        mock_asyncio_run.return_value = result
+        def close_and_return(coro):
+            coro.close()
+            return result
+        mock_asyncio_run.side_effect = close_and_return
         
         # Create CLI instance
         cli = AsyncNamingCLI()
@@ -265,24 +271,27 @@ class CLIClassResolutionTest(unittest.TestCase):
     @patch('asyncio.run')  # Patch asyncio.run to capture the coroutine
     def test_async_conflict_warning(self, mock_asyncio_run, mock_print):
         """Test that warnings work correctly with async methods that have naming conflicts."""
-        
+
         class AsyncConflictCLI(AutoCLI):
             # Naming convention class
             class AsyncCommandArgs(BaseModel):
                 name: str = param("default", l="--name", s="-n")
-            
+
             # Type annotation class
             class CustomArgs(BaseModel):
                 value: int = param(42, l="--value", s="-v")
-            
+
             # Async method with type annotation (conflict with naming convention)
             async def run_async_command(self, args: CustomArgs):
                 # In a real implementation, we would await something here
                 return f"Value: {args.value}"
-        
-        # Setup asyncio.run to return the result directly
+
+        # Setup asyncio.run to close the coroutine and return the result
         result = "Value: 123"
-        mock_asyncio_run.return_value = result
+        def close_and_return(coro):
+            coro.close()
+            return result
+        mock_asyncio_run.side_effect = close_and_return
         
         # Create CLI instance - this should trigger the warning
         cli = AsyncConflictCLI()
