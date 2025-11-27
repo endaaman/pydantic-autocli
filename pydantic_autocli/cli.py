@@ -37,6 +37,7 @@ class Colors:
         YELLOW = '\033[93m'
         MAGENTA = '\033[95m'
         RED = '\033[91m'
+        BOLD = '\033[1m'
         RESET = '\033[0m'
     else:
         GREEN = ''
@@ -44,6 +45,7 @@ class Colors:
         YELLOW = ''
         MAGENTA = ''
         RED = ''
+        BOLD = ''
         RESET = ''
 
     @staticmethod
@@ -52,7 +54,7 @@ class Colors:
         if isinstance(v, bool):
             return f"{Colors.MAGENTA}{v}{Colors.RESET}"
         elif isinstance(v, str):
-            return f"{Colors.GREEN}{v}{Colors.RESET}"
+            return f"{Colors.GREEN}\"{v}\"{Colors.RESET}"
         elif isinstance(v, (int, float)):
             return f"{Colors.CYAN}{v}{Colors.RESET}"
         else:
@@ -631,13 +633,14 @@ class AutoCLI:
         self._pre_common(args)
 
         if not self.quiet:
-            print(f"{Colors.GREEN}▶{Colors.RESET} Starting {Colors.CYAN}{name}{Colors.RESET}")
+            print(f"{Colors.GREEN}▶{Colors.RESET} {Colors.BOLD}Starting{Colors.RESET} {Colors.CYAN}{name}{Colors.RESET}")
             args_dict = args.model_dump()
             if len(args_dict) > 0:
+                print(f"{Colors.BOLD}│ Args:{Colors.RESET}")
                 maxlen = max(len(k) for k in args_dict)
                 for k, v in args_dict.items():
                     print(f"  {k:<{maxlen}} = {Colors.colorize_value(v)}")
-                print()
+            print(f"{Colors.BOLD}» Output:{Colors.RESET}")
 
         result = False
         try:
@@ -646,13 +649,13 @@ class AutoCLI:
             else:
                 result = function(args)
             if not self.quiet:
-                print(f"{Colors.GREEN}✓{Colors.RESET} Done {Colors.CYAN}{name}{Colors.RESET}")
+                print(f"{Colors.GREEN}✓{Colors.RESET} {Colors.BOLD}Done{Colors.RESET} {Colors.CYAN}{name}{Colors.RESET}")
         except Exception as e:
             logger.error(f"ERROR in command execution: {e}")
             logger.debug("", exc_info=True)
             traceback.print_exc()
             if not self.quiet:
-                print(f"{Colors.RED}✗{Colors.RESET} Failed {Colors.CYAN}{name}{Colors.RESET}")
+                print(f"{Colors.RED}✗{Colors.RESET} {Colors.BOLD}Failed{Colors.RESET} {Colors.CYAN}{name}{Colors.RESET}")
 
         # Validate and handle the result type
         if result is None:
