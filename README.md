@@ -20,52 +20,55 @@ pip install pydantic-autocli
 - Support for common arguments across all commands
 - Support for async commands
 - Support for array arguments (list[str], list[int], list[float], etc.)
+- Default command support (`run_default`)
+- Per-subcommand `--help` option
+
+Requires Pydantic v2.
 
 ## Basic Usage
 
-pydantic-autocli provides multiple ways to define CLI arguments and commands.
-
-```python:cli.py
+```python
 from pydantic import BaseModel
-from pydantic_autocli import AutoCLI
+from pydantic_autocli import AutoCLI, param
 
 class MyCLI(AutoCLI):
-    # Standard Pydantic notation
-    class CustomArgs(BaseModel):
-        # Required parameter (no default value)
-        required_value: int
-        # Optional parameter (with default value)
-        optional_value: int = 123
-        # Array parameter
-        names: list[str] = []
-        
-    # This will be triggered by `python xxx.py simple` command
-    # Args class is explicitly specified (by type annotation)
-    def run_simple(self, args:CustomArgs):
-        print(f"Required: {args.required_value}")
-        print(f"Optional: {args.optional_value}")
-        print(f"Names: {args.names}")
+    # Default command: runs when no subcommand is provided
+    class DefaultArgs(BaseModel):
+        message: str = param("Hello", l="--message", s="-m")
+
+    def run_default(self, args: DefaultArgs):
+        print(args.message)
+
+    # Subcommand: `python script.py greet`
+    class GreetArgs(BaseModel):
+        name: str = param("World", l="--name", s="-n")
+        count: int = param(1, l="--count", s="-c")
+
+    def run_greet(self, args: GreetArgs):
+        for _ in range(args.count):
+            print(f"Hello, {args.name}!")
 
 if __name__ == "__main__":
-    cli = MyCLI()
-    cli.run()
+    MyCLI().run()
 ```
-
-pydantic-autocli uses standard `argparse` under the hood, so command-line arguments follow familiar patterns:
 
 ```bash
-# Run simple command with required parameter
-python your_script.py simple --required-value 42 --optional-value 100 
+# Default command
+python script.py                       # prints "Hello"
+python script.py --message "Hi"        # prints "Hi"
 
-# Run simple command with all parameters (multiple ways to specify arrays)
-python your_script.py simple --required-value 42 --names John --names Jane
+# Subcommand
+python script.py greet --name Alice    # prints "Hello, Alice!"
+python script.py greet -n Bob -c 3     # prints "Hello, Bob!" 3 times
 
-# Array values can also be provided as space-delimited in a single argument
-python your_script.py simple --required-value 42 --names John Jane Bob
+# Help
+python script.py --help                # shows default command help
+python script.py greet --help          # shows greet command help
 ```
 
+Note: `--help` is reserved and cannot be used as a field name.
 
-## advanced Usage
+## Advanced Usage
 
 
 ```python
