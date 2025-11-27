@@ -41,6 +41,17 @@ primitive2type = {
 }
 
 
+def get_model_fields(cls):
+    """Get model fields from a Pydantic model class (supports v1 and v2)."""
+    import warnings
+    if hasattr(cls, 'model_fields'):
+        return cls.model_fields
+    # Suppress deprecation warning for __fields__ in v2
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        return getattr(cls, '__fields__', {})
+
+
 def param(default_value, *, s=None, l=None, choices=None, **kwargs):
     """Create a Field object with CLI-specific parameters.
 
@@ -112,6 +123,13 @@ def register_cls_to_parser(cls, parser):
             args.append(prop["s"])
         elif "s" in json_schema_extra:
             args.append(json_schema_extra["s"])
+
+        # Check for reserved --help option
+        if "--help" in args:
+            raise ValueError(
+                f"'--help' is reserved for AutoCLI. "
+                f"Please use a different option name in {cls.__name__}.{key}."
+            )
 
         kwargs = {}
         if "description" in prop:
@@ -523,16 +541,24 @@ class AutoCLI:
         if argv is None:
             argv = sys.argv
 
+        # --help takes priority over all other options
+        if '--help' in argv[1:]:
+            # Find subcommand in argv (first non-option arg that matches a subcommand)
+            subcommand = None
+            for arg in argv[1:]:
+                if not arg.startswith('-') and arg in self.subparsers_info:
+                    subcommand = arg
+                    break
+            if subcommand:
+                self.print_help(subcommand.replace('-', '_'))
+            elif self.has_default:
+                self.print_help('default')
+            else:
+                self.print_help()
+            sys.exit(0)
+
         self.raw_args = self.main_parser.parse_args(argv[1:])
         logger.debug(f"Parsed args: {self.raw_args}")
-
-        # Check if help was requested (at main level)
-        if hasattr(self.raw_args, 'help') and self.raw_args.help:
-            # If no subcommand specified, show full help
-            if not hasattr(self.raw_args, "__function"):
-                logger.debug("Help requested via --help (no subcommand)")
-                self.print_help()
-                exit(0)
 
         args_dict = self.raw_args.__dict__
 
@@ -548,17 +574,11 @@ class AutoCLI:
                 # No run_default, show help
                 logger.debug("No function specified, showing help")
                 self.print_help()
-                exit(0)
+                sys.exit(0)
         else:
             name = args_dict["__function"]
             replacer = args_dict["__replacer"]
             args_cls = args_dict["__cls"]
-
-            # Check if subcommand help was requested
-            if hasattr(self.raw_args, 'help') and self.raw_args.help:
-                logger.debug(f"Help requested for subcommand '{name}'")
-                self.print_help(name)
-                exit(0)
 
         logger.debug(f"Running command '{name}' with class {args_cls.__name__}")
         logger.debug(f"Replacer mapping: {replacer}")
@@ -585,7 +605,7 @@ class AutoCLI:
             logger.error(f"Failed to create args instance: {e}")
             logger.debug(f"Args class: {args_cls}")
             logger.debug(f"Args params: {args_params}")
-            exit(1)
+            sys.exit(1)
 
         function = getattr(self, "run_" + name)
         logger.debug(f"Function to call: {function.__name__}")
