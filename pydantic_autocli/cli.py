@@ -21,6 +21,43 @@ logger.addHandler(handler)
 # デフォルトではログを出さないようにする（WARNING以上のみ表示）
 logger.setLevel(logging.WARNING)
 
+
+class Colors:
+    """ANSI color codes for terminal output."""
+    # Check if colors should be disabled
+    _enabled = (
+        os.environ.get('NO_COLOR') is None
+        and hasattr(sys.stdout, 'isatty')
+        and sys.stdout.isatty()
+    )
+
+    if _enabled:
+        GREEN = '\033[92m'
+        CYAN = '\033[96m'
+        YELLOW = '\033[93m'
+        MAGENTA = '\033[95m'
+        RED = '\033[91m'
+        RESET = '\033[0m'
+    else:
+        GREEN = ''
+        CYAN = ''
+        YELLOW = ''
+        MAGENTA = ''
+        RED = ''
+        RESET = ''
+
+    @staticmethod
+    def colorize_value(v):
+        """Colorize a value based on its type."""
+        if isinstance(v, bool):
+            return f"{Colors.MAGENTA}{v}{Colors.RESET}"
+        elif isinstance(v, str):
+            return f"{Colors.GREEN}{v}{Colors.RESET}"
+        elif isinstance(v, (int, float)):
+            return f"{Colors.CYAN}{v}{Colors.RESET}"
+        else:
+            return str(v)
+
 def snake_to_pascal(s):
     """Convert snake_case string to PascalCase."""
     r = capwords(s.replace("_", " "))
@@ -164,14 +201,16 @@ class AutoCLI:
         """Base class for common arguments shared across all commands."""
         pass
 
+    quiet: bool = False
+
     def _pre_common(self, a):
         """Execute pre-common hook if defined."""
         import warnings
-        
+
         # Check for new prepare() method first
         prepare = getattr(self, "prepare", None)
         pre_common = getattr(self, "pre_common", None)
-        
+
         if prepare:
             prepare(a)
         elif pre_common:
@@ -240,7 +279,7 @@ class AutoCLI:
             sub_parser.add_argument('--help', action='store_true', help='show command help and exit')
             replacer = register_cls_to_parser(args_class, sub_parser)
             sub_parser.set_defaults(__function=name, __cls=args_class, __replacer=replacer)
-            
+
             # Store subparser info for detailed help
             method_func = getattr(self, key)
             method_doc = method_func.__doc__.strip() if method_func.__doc__ else None
@@ -590,17 +629,15 @@ class AutoCLI:
         self.args = args
 
         self._pre_common(args)
-        print(f"Starting <{name}>")
 
-        args_dict = args.model_dump()
-
-        if len(args_dict) > 0:
-            print("Args")
-            maxlen = max(len(k) for k in args_dict) if len(args_dict) > 0 else -1
-            for k, v in args_dict.items():
-                print(f"\t{k:<{maxlen+1}}: {v}")
-        else:
-            print("No args")
+        if not self.quiet:
+            print(f"{Colors.GREEN}▶{Colors.RESET} Starting {Colors.CYAN}{name}{Colors.RESET}")
+            args_dict = args.model_dump()
+            if len(args_dict) > 0:
+                maxlen = max(len(k) for k in args_dict)
+                for k, v in args_dict.items():
+                    print(f"  {k:<{maxlen}} = {Colors.colorize_value(v)}")
+                print()
 
         result = False
         try:
@@ -608,11 +645,14 @@ class AutoCLI:
                 result = asyncio.run(function(args))
             else:
                 result = function(args)
-            print(f"Done <{name}>")
+            if not self.quiet:
+                print(f"{Colors.GREEN}✓{Colors.RESET} Done {Colors.CYAN}{name}{Colors.RESET}")
         except Exception as e:
             logger.error(f"ERROR in command execution: {e}")
             logger.debug("", exc_info=True)
             traceback.print_exc()
+            if not self.quiet:
+                print(f"{Colors.RED}✗{Colors.RESET} Failed {Colors.CYAN}{name}{Colors.RESET}")
 
         # Validate and handle the result type
         if result is None:

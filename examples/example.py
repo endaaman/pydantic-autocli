@@ -9,12 +9,13 @@ from pydantic_autocli import AutoCLI, param
 class SimpleCLI(AutoCLI):
     class CommonArgs(AutoCLI.CommonArgs):
         # Common arguments for all commands
-        verbose: bool = param(False, description="Enable verbose output")
+        quiet: bool = param(False, s='-q', description="Set verbosity of output")
 
-    def prepare(self, args):
+    def prepare(self, a:CommonArgs):
         """Common initialization for all commands"""
-        if args.verbose:
-            print("[DEBUG] Verbose mode enabled")
+        if a.quiet:
+            self.quiet = a.quiet
+            print("[DEBUG] Verbose mode disabled")
 
     class GreetArgs(CommonArgs):
         # Arguments specific to 'greet' command
@@ -27,7 +28,7 @@ class SimpleCLI(AutoCLI):
         for _ in range(a.count):
             print(f"Hello, {a.name}!")
 
-        if a.verbose:
+        if not a.quiet:
             print(f"Greeted {a.name} {a.count} times")
 
     class CustomArgs(CommonArgs):
