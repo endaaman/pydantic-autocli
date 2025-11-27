@@ -237,18 +237,18 @@ uv run task example file --file README.md
 
 ## Claude Code Integration
 
-If you're using Claude Code with your pydantic-autocli application, add this section to your project's `CLAUDE.md`:
+Add to your project's `CLAUDE.md`:
 
 ```markdown
 ## AutoCLI Usage
 
-Key patterns:
-- `def run_foo_bar(self, args):` → `python script.py foo-bar`
-- `def prepare(self, args):` → shared initialization  
-- `class FooBarArgs(AutoCLI.CommonArgs):` → command arguments
-- Return `True`/`None` (success), `False` (fail), `int` (exit code)
+- `def run_foo_bar(self, a: FooBarArgs)` → `script.py foo-bar`
+- `def run_default(self, a: DefaultArgs)` → `script.py` (no subcommand)
+- `class CommonArgs` → shared arguments across all commands
+- `def prepare(self, a: CommonArgs)` → runs before every command
+- Return `True`/`None` (exit 0), `False` (exit 1), `int` (custom exit code)
 
-For details: `python your_script.py --help`
+For details: `script.py --help` or `script.py <command> --help`
 ```
 
 ## License
