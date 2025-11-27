@@ -42,14 +42,8 @@ primitive2type = {
 
 
 def get_model_fields(cls):
-    """Get model fields from a Pydantic model class (supports v1 and v2)."""
-    import warnings
-    if hasattr(cls, 'model_fields'):
-        return cls.model_fields
-    # Suppress deprecation warning for __fields__ in v2
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
-        return getattr(cls, '__fields__', {})
+    """Get model fields from a Pydantic model class."""
+    return cls.model_fields
 
 
 def param(default_value, *, s=None, l=None, choices=None, **kwargs):
@@ -92,9 +86,7 @@ def register_cls_to_parser(cls, parser):
     logger.debug(f"Registering class {cls.__name__} to parser")
     replacer = {}
 
-    # Use model_json_schema for pydantic v2 compatibility
-    schema_func = getattr(cls, "model_json_schema", None) or cls.schema
-    schema = schema_func()
+    schema = cls.model_json_schema()
     properties = schema.get("properties", {})
 
     for key, prop in properties.items():
@@ -104,25 +96,15 @@ def register_cls_to_parser(cls, parser):
         # Default snake-case conversion for command line args
         snake_key = "--" + key.replace("_", "-")
 
-        # Check for custom CLI args in json_schema_extra or directly in prop
-        json_schema_extra = prop.get("json_schema_extra", {})
-
-        # First check direct properties (for backward compatibility)
+        # json_schema_extra fields are expanded directly into prop in Pydantic v2
         if "l" in prop:
             snake_key = prop["l"]
-            replacer[snake_key[2:].replace("-", "_")] = key
-        # Then check json_schema_extra (preferred for v2)
-        elif "l" in json_schema_extra:
-            snake_key = json_schema_extra["l"]
             replacer[snake_key[2:].replace("-", "_")] = key
 
         args = [snake_key]
 
-        # Check for short form in either location
         if "s" in prop:
             args.append(prop["s"])
-        elif "s" in json_schema_extra:
-            args.append(json_schema_extra["s"])
 
         # Check for reserved --help option
         if "--help" in args:
@@ -158,11 +140,8 @@ def register_cls_to_parser(cls, parser):
                 kwargs["nargs"] = "*"
             kwargs["type"] = primitive2type[prop["items"]["type"]]
 
-        # Check for choices in either location
         if "choices" in prop:
             kwargs["choices"] = prop["choices"]
-        elif "choices" in json_schema_extra:
-            kwargs["choices"] = json_schema_extra["choices"]
 
         logger.debug(f"Parser arguments: {args}")
         logger.debug(f"Parser kwargs: {kwargs}")
@@ -595,11 +574,8 @@ class AutoCLI:
 
         logger.debug(f"Args params for parsing: {args_params}")
 
-        # Support both Pydantic v1 and v2
-        parse_method = getattr(args_cls, "model_validate", None) or args_cls.parse_obj
-
         try:
-            args = parse_method(args_params)
+            args = args_cls.model_validate(args_params)
             logger.debug(f"Created args instance: {args}")
         except Exception as e:
             logger.error(f"Failed to create args instance: {e}")
@@ -616,9 +592,7 @@ class AutoCLI:
         self._pre_common(args)
         print(f"Starting <{name}>")
 
-        # Use model_dump for Pydantic v2 compatibility or dict() for v1
-        dict_method = getattr(args, "model_dump", None) or args.dict
-        args_dict = dict_method()
+        args_dict = args.model_dump()
 
         if len(args_dict) > 0:
             print("Args")
