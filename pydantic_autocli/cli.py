@@ -211,10 +211,13 @@ class AutoCLI:
         self.method_args_mapping = {}
         # Store subparsers for detailed help generation
         self.subparsers_info = {}
+        # Track if run_default exists
+        self.has_default = hasattr(self, "run_default")
 
         # List all methods that start with run_
         run_methods = [key for key in dir(self) if key.startswith("run_")]
         logger.debug(f"Found {len(run_methods)} run methods: {run_methods}")
+        logger.debug(f"Has run_default: {self.has_default}")
 
         for key in run_methods:
             m = re.match(r"^run_(.*)$", key)
@@ -236,6 +239,8 @@ class AutoCLI:
 
             # Create subparser without -h to allow user-defined -h args
             sub_parser = sub_parsers.add_parser(subcommand_name, add_help=False)
+            # Add --help manually (without -h to allow user-defined -h args)
+            sub_parser.add_argument('--help', action='store_true', help='show command help and exit')
             replacer = register_cls_to_parser(args_class, sub_parser)
             sub_parser.set_defaults(__function=name, __cls=args_class, __replacer=replacer)
             
@@ -250,17 +255,39 @@ class AutoCLI:
 
             logger.debug(f"Registered parser for command '{subcommand_name}' with replacer: {replacer}")
 
+        # If run_default exists, register its args to main_parser for `cli --arg` usage
+        if self.has_default and "default" in self.method_args_mapping:
+            default_args_class = self.method_args_mapping["default"]
+            self.default_replacer = register_cls_to_parser(default_args_class, self.main_parser)
+            logger.debug(f"Registered default args to main parser: {default_args_class.__name__}")
+        else:
+            self.default_replacer = {}
+
         logger.debug(f"Final method_args_mapping: {[(k, v.__name__) for k, v in self.method_args_mapping.items()]}")
 
-    def print_detailed_help(self):
-        """Print detailed help including all subcommands and their arguments."""
-        import io
-        import sys
-        
+    def print_help(self, command=None):
+        """Print help message.
+
+        Args:
+            command: If None, print full help including all subcommands and AutoCLI patterns.
+                    If specified, print help for that specific command only (no patterns).
+        """
+        if command is not None:
+            # Print help for specific command
+            subcommand_name = snake_to_kebab(command)
+            if subcommand_name not in self.subparsers_info:
+                print(f"Unknown command: {command}")
+                return
+
+            info = self.subparsers_info[subcommand_name]
+            info['parser'].print_help()
+            return
+
+        # Print full help
         # Print main usage
         self.main_parser.print_help()
         print()
-        
+
         # Print AutoCLI usage patterns
         print("AutoCLI patterns:")
         print("  • def run_foo_bar(self, args): → python script.py foo-bar")
@@ -269,36 +296,21 @@ class AutoCLI:
         print("  • param(..., l='--long', s='-s') → custom argument options")
         print("  • return True/None (success), False (fail), int (exit code)")
         print()
-        
+
         if not self.subparsers_info:
             return
-            
+
         print("Available commands:")
         for subcommand_name, info in self.subparsers_info.items():
             desc = info['description'] or "No description available"
             # Limit description to first line for overview
             first_line = desc.split('\n')[0] if desc else "No description available"
             print(f"  {subcommand_name:<12} - {first_line}")
-        
+
         print("\nCommand details:")
         for subcommand_name, info in self.subparsers_info.items():
             print(f"\n{'=' * 3} {subcommand_name} {'=' * 3}")
-            
-            # Capture subparser help to string buffer
-            old_stdout = sys.stdout
-            help_buffer = io.StringIO()
-            sys.stdout = help_buffer
-            
-            try:
-                info['parser'].print_help()
-            except SystemExit:
-                # print_help() calls sys.exit(), we need to catch it
-                pass
-            finally:
-                sys.stdout = old_stdout
-            
-            help_text = help_buffer.getvalue()
-            print(help_text.rstrip())
+            info['parser'].print_help()
 
     def _get_type_annotation_for_method(self, method_key) -> Optional[Type[BaseModel]]:
         """Extract type annotation for the run_* method parameter (other than self).
@@ -514,21 +526,39 @@ class AutoCLI:
         self.raw_args = self.main_parser.parse_args(argv[1:])
         logger.debug(f"Parsed args: {self.raw_args}")
 
-        # Check if help was requested
+        # Check if help was requested (at main level)
         if hasattr(self.raw_args, 'help') and self.raw_args.help:
-            logger.debug("Help requested via --help/-h")
-            self.print_detailed_help()
-            exit(0)
-
-        if not hasattr(self.raw_args, "__function"):
-            logger.debug("No function specified, showing basic help")
-            self.main_parser.print_help()
-            exit(0)
+            # If no subcommand specified, show full help
+            if not hasattr(self.raw_args, "__function"):
+                logger.debug("Help requested via --help (no subcommand)")
+                self.print_help()
+                exit(0)
 
         args_dict = self.raw_args.__dict__
-        name = args_dict["__function"]
-        replacer = args_dict["__replacer"]
-        args_cls = args_dict["__cls"]
+
+        if not hasattr(self.raw_args, "__function"):
+            # No subcommand specified
+            if self.has_default:
+                # run_default exists, execute it
+                logger.debug("No function specified, running default command")
+                name = "default"
+                args_cls = self.method_args_mapping["default"]
+                replacer = self.default_replacer
+            else:
+                # No run_default, show help
+                logger.debug("No function specified, showing help")
+                self.print_help()
+                exit(0)
+        else:
+            name = args_dict["__function"]
+            replacer = args_dict["__replacer"]
+            args_cls = args_dict["__cls"]
+
+            # Check if subcommand help was requested
+            if hasattr(self.raw_args, 'help') and self.raw_args.help:
+                logger.debug(f"Help requested for subcommand '{name}'")
+                self.print_help(name)
+                exit(0)
 
         logger.debug(f"Running command '{name}' with class {args_cls.__name__}")
         logger.debug(f"Replacer mapping: {replacer}")
@@ -536,6 +566,8 @@ class AutoCLI:
         args_params = {}
         for k, v in args_dict.items():
             if k.startswith("__"):
+                continue
+            if k == "help":
                 continue
             if k in replacer:
                 k = replacer[k]
