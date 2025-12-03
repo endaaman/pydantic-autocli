@@ -7,7 +7,7 @@ name = "pydantic-autocli"
 version = "0.3.1"
 description = "Automatically generate CLI from Pydantic models"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = {file = "LICENSE"}
 authors = [
     {name = "Ken Enda", email = "ken@endaaman.com"},
