@@ -5,12 +5,10 @@ Testing naming convention vs type annotation priority and warning messages.
 """
 
 import unittest
-import sys
 import logging
 from pydantic import BaseModel
 from pydantic_autocli import AutoCLI, param
-from unittest.mock import patch, MagicMock, call
-import asyncio
+from unittest.mock import patch, MagicMock
 
 
 # Set up logging for debugging

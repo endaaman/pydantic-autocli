@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from .cli import AutoCLI, param
+from .cli import AutoCLI, param, ExtraArgsMixin
 import logging
 
 def set_log_level(level):
@@ -17,5 +17,6 @@ __all__ = [
     "Field",
     "AutoCLI",
     "param",
+    "ExtraArgsMixin",
     "set_log_level",
 ]

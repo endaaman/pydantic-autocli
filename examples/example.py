@@ -3,7 +3,6 @@ A simple CLI example using pydantic-autocli.
 """
 
 import os
-from pydantic import BaseModel
 from pydantic_autocli import AutoCLI, param
 
 class SimpleCLI(AutoCLI):

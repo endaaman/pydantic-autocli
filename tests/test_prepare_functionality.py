@@ -1,6 +1,5 @@
 """Tests for prepare() functionality."""
 
-import warnings
 import pytest
 from pydantic_autocli import AutoCLI, param
 

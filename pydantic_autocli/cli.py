@@ -4,8 +4,7 @@ import re
 from string import capwords
 import inspect
 import asyncio
-import typing
-from typing import Callable, Type, get_type_hints, Optional, Dict, Any, List, Union
+from typing import Type, get_type_hints, Optional
 import argparse
 import logging
 import traceback
@@ -13,6 +12,61 @@ import traceback
 from pydantic import BaseModel, Field
 
 # Configure logging
+
+
+class ExtraArgsMixin:
+    """Mixin class to access positional arguments and remainder (after --).
+
+    Use this mixin with your Args class to access:
+    - Positional arguments (args before --)
+    - Remainder arguments (args after --)
+
+    Example:
+        class Args(ExtraArgsMixin, BaseModel):
+            foo: str = param("default", l="--foo")
+
+        def run_cmd(self, args: Args):
+            positional = args.get_positional()      # ['PARAM1', 'PARAM2']
+            remainder = args.get_remainder()         # 'nested-cmd --param 123'
+            remainder_list = args.get_remainder_list()  # ['nested-cmd', '--param', '123']
+    """
+
+    _positional: list = []
+    _remainder: list = []
+
+    def _set_positional(self, positional: list):
+        """Internal: Set positional arguments."""
+        object.__setattr__(self, '_positional', positional)
+
+    def _set_remainder(self, remainder: list):
+        """Internal: Set remainder arguments."""
+        object.__setattr__(self, '_remainder', remainder)
+
+    def get_positional(self) -> list:
+        """Get positional arguments (before --).
+
+        Returns:
+            List of positional argument strings.
+        """
+        return getattr(self, '_positional', [])
+
+    def get_remainder(self) -> str:
+        """Get remainder arguments (after --) as a single string.
+
+        Returns:
+            Space-joined string of all arguments after --.
+        """
+        return " ".join(getattr(self, '_remainder', []))
+
+    def get_remainder_list(self) -> list:
+        """Get remainder arguments (after --) as a list.
+
+        Returns:
+            List of argument strings after --.
+        """
+        return getattr(self, '_remainder', [])
+
+
 logger = logging.getLogger("pydantic_autocli")
 handler = logging.StreamHandler()
 formatter = logging.Formatter("%(levelname)s - %(message)s")
@@ -166,7 +220,7 @@ def register_cls_to_parser(cls, parser):
                 kwargs["metavar"] = f"<{prop['type']}>"
         elif prop["type"] == "boolean":
             if "default" in prop:
-                logger.debug(f"default value of bool is ignored.")
+                logger.debug("default value of bool is ignored.")
             kwargs["action"] = "store_true"
         elif prop["type"] == "array":
             if "default" in prop:
@@ -468,7 +522,7 @@ class AutoCLI:
                         logger.debug(f"Found class {class_name} in globals from source analysis")
                         return cls
             else:
-                logger.debug(f"Could not extract parameter info from source")
+                logger.debug("Could not extract parameter info from source")
 
         except Exception as e:
             logger.exception(f"Error getting type annotation for {method_key}: {e}")
@@ -561,11 +615,22 @@ class AutoCLI:
         if argv is None:
             argv = sys.argv
 
+        # Split argv at -- to separate remainder arguments
+        argv_to_parse = argv[1:]
+        remainder_args = []
+        if "--" in argv_to_parse:
+            idx = argv_to_parse.index("--")
+            remainder_args = argv_to_parse[idx + 1:]
+            argv_to_parse = argv_to_parse[:idx]
+
+        logger.debug(f"argv_to_parse: {argv_to_parse}")
+        logger.debug(f"remainder_args: {remainder_args}")
+
         # --help takes priority over all other options
-        if '--help' in argv[1:]:
+        if '--help' in argv_to_parse:
             # Find subcommand in argv (first non-option arg that matches a subcommand)
             subcommand = None
-            for arg in argv[1:]:
+            for arg in argv_to_parse:
                 if not arg.startswith('-') and arg in self.subparsers_info:
                     subcommand = arg
                     break
@@ -577,7 +642,7 @@ class AutoCLI:
                 self.print_help()
             sys.exit(0)
 
-        self.raw_args = self.main_parser.parse_args(argv[1:])
+        self.raw_args, positional_args = self.main_parser.parse_known_args(argv_to_parse)
         logger.debug(f"Parsed args: {self.raw_args}")
 
         args_dict = self.raw_args.__dict__
@@ -623,6 +688,17 @@ class AutoCLI:
             logger.debug(f"Args class: {args_cls}")
             logger.debug(f"Args params: {args_params}")
             sys.exit(1)
+
+        # Set positional and remainder args if the args class uses ExtraArgsMixin
+        if isinstance(args, ExtraArgsMixin):
+            # For default command, positional args are ambiguous with subcommands, so always empty
+            if name == "default":
+                args._set_positional([])
+            else:
+                args._set_positional(positional_args)
+            args._set_remainder(remainder_args)
+            logger.debug(f"Set positional args: {args.get_positional()}")
+            logger.debug(f"Set remainder args: {remainder_args}")
 
         function = getattr(self, "run_" + name)
         logger.debug(f"Function to call: {function.__name__}")

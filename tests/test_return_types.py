@@ -5,11 +5,9 @@ Testing how different return values from command methods are processed.
 """
 
 import unittest
-import sys
 import logging
-from pydantic import BaseModel
 from pydantic_autocli import AutoCLI, param
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 
 # Set up logging for debugging

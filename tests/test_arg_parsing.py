@@ -5,7 +5,6 @@ Testing how CLI arguments are processed, converted, and handled in different for
 """
 
 import unittest
-import sys
 import logging
 from pydantic import BaseModel
 from pydantic_autocli import AutoCLI, param
