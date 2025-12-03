@@ -28,6 +28,7 @@ testpaths = ["tests"]
 python_files = "test_*.py"
 
 [tool.taskipy.tasks]
+test = "pytest"
 coverage = "pytest --cov=pydantic_autocli --cov-report=term-missing --disable-warnings"
 example = "python examples/example.py"
 clean = "rm -rf build/ dist/ *.egg-info/ __pycache__/ && find . -name '*.pyc' -delete && find . -name '__pycache__' -delete"
