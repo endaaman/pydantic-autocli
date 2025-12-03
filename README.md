@@ -13,17 +13,13 @@ pip install pydantic-autocli
 
 ## Features
 
-- Automatically generate CLI commands from class methods
-- Map Pydantic model fields to CLI arguments
-- Customize CLI arguments with short/long forms and other options
-- Automatically handle help text generation
-- Support for common arguments across all commands
-- Support for async commands
-- Support for array arguments (list[str], list[int], list[float], etc.)
-- Default command support (`run_default`)
-- Per-subcommand `--help` option
+- Automatic CLI generation from Pydantic models
+- Type-safe argument parsing with validation
+- Async command support
+- Default command (`run_default`) and subcommands
+- Positional and remainder arguments (`--`) via `ExtraArgsMixin`
 
-Requires Pydantic v2.
+Requires Python 3.10+ and Pydantic v2.
 
 ## Basic Usage
 
@@ -70,169 +66,113 @@ Note: `--help` is reserved and cannot be used as a field name.
 
 ## Advanced Usage
 
+### Common Arguments and Initialization
 
 ```python
-from pydantic import Field
 from pydantic_autocli import AutoCLI, param
 
 class MyCLI(AutoCLI):
-    # Common arguments for all commands and act as a fallback
+    # Shared arguments across all commands
     class CommonArgs(AutoCLI.CommonArgs):
-        # `param` `param()` is syntax sugar for `Field()`
-        verbose: bool = param(False, l="--verbose", s="-v", description="Enable detailed output")
-        # Field can also be used
-        seed: int = Field(42, json_schema_extra={"l": "--seed"})
+        verbose: bool = param(False, l="--verbose", s="-v")
 
-    # Executed commonly for all subcommands
-    def prepare(self, args:CommonArgs):
-        print(f'Using seed: {args.seed}')
-
-    class VeryAdvancedArgs(CommonArgs):
-        # file_name becomes --file-name in command line 
-        file_name: str = param(..., l="--name", pattern=r"^[a-zA-Z]+\.(txt|json|yaml)$")
-        # Restrict choices
-        mode: str = param("read", l="--mode", choices=["read", "write", "append"])
-        # You can use float, too
-        wait: float = Field(0.5, json_schema_extra={"l": "--wait", "s": "-w"})
-
-
-    # This will be triggered by `python xxx.py very-advanced` command
-    # Args class selection rule: run_very_advanced -> VeryAdvancedArgs (by naming convention)
-    # This is an async method that can be awaited
-    async def run_very_advanced(self, args):
-        print(f"File name: {args.file_name}")
-        print(f"Mode: {args.mode}")
-        
-        print(f"Waiting for {args.wait}s..")
-        await asyncio.sleep(args.wait)
-
+    # Runs before every command
+    def prepare(self, args: CommonArgs):
         if args.verbose:
             print("Verbose mode enabled")
-        if not os.path.exists(args.file_name):
-            return False # Indicates error (exit code 1)
-        return True  # Indicates success (exit code 0)
 
-        # Also supports custom exit codes
-        # return 423
-
-if __name__ == "__main__":
-    cli = MyCLI()
-    # Uses sys.argv by default    
-    cli.run()  
-    # Explicitly pass sys.argv
-    cli.run(sys.argv)  
-    # Pass custom arguments
-    cli.run(["program_name", "command", "--value", "value1", "--flag"])    
+    def run_task(self, args: CommonArgs):
+        print("Running task...")
 ```
 
+### Parameter Options
 
-`param` passes all CLI-specific options (like `s` for short form, `l` for long form) to Field's json_schema_extra. All other options (like `ge`, `le`, `gt`, `lt`, `min_length`, `max_length`, `pattern`) are passed directly to Field for validation.
-
-
-```bash
-# Run very-advanced command
-python your_script.py very-advanced --file-name data.txt --mode write --wait 1.5 --verbose
+```python
+class TaskArgs(AutoCLI.CommonArgs):
+    # Required argument (no default)
+    name: str = param(..., l="--name", s="-n")
+    # Choices
+    mode: str = param("read", l="--mode", choices=["read", "write"])
+    # Validation
+    count: int = param(1, l="--count", ge=1, le=100)
+    pattern: str = param(".*", l="--pattern", pattern=r"^[a-z]+$")
 ```
 
-## Argument Resolution
+### Async Commands and Return Values
 
-### Using Type Annotations
+```python
+async def run_fetch(self, args):
+    await asyncio.sleep(1)
+    if error:
+        return False  # exit code 1
+    return True       # exit code 0
+    # return 42       # custom exit code
+```
 
-You can directly specify the argument class using type annotations:
+### Positional and Remainder Arguments (ExtraArgsMixin)
+
+Use `ExtraArgsMixin` to capture positional arguments and arguments after `--`:
 
 ```python
 from pydantic import BaseModel
-from pydantic_autocli import AutoCLI, param
+from pydantic_autocli import AutoCLI, param, ExtraArgsMixin
 
 class MyCLI(AutoCLI):
-    class CustomArgs(AutoCLI.CommonArgs):
-        value: int = param(42, l="--value", s="-v")
-    
-    # Use type annotation to specify args class
-    def run_command(self, args: CustomArgs):
-        print(f"Value: {args.value}")
+    class RunArgs(ExtraArgsMixin, BaseModel):
+        verbose: bool = param(False, l="--verbose", s="-v")
+
+    def run_exec(self, args: RunArgs):
+        # Positional arguments (before --)
+        files = args.get_positional()  # ['file1.py', 'file2.py']
+
+        # Remainder arguments (after --)
+        cmd = args.get_remainder()       # 'python -m pytest --tb=short'
+        cmd_list = args.get_remainder_list()  # ['python', '-m', 'pytest', '--tb=short']
+
+        print(f"Files: {files}")
+        print(f"Command: {cmd}")
+
+if __name__ == "__main__":
+    MyCLI().run()
 ```
 
+```bash
+# Positional args and remainder after --
+python script.py exec file1.py file2.py -- python -m pytest --tb=short
 
-### Using Naming Convention
+# Only remainder
+python script.py exec -- nested-command --option value
+```
 
-You can specify argument classes for CLI commands using naming conventions:
+Note: For the default command (`run_default`), `get_positional()` always returns an empty list to avoid ambiguity with subcommand names. Use `get_remainder()` instead.
+
+## Argument Resolution
+
+Args class is resolved in this order:
+
+1. **Type annotation**: `def run_cmd(self, args: MyArgs)` → uses `MyArgs`
+2. **Naming convention**: `run_foo_bar` → looks for `FooBarArgs`
+3. **Fallback**: uses `CommonArgs`
 
 ```python
 class MyCLI(AutoCLI):
-    # Naming convention:
-    # run_command → CommandArgs
-    # run_foo_bar → FooBarArgs
-    
-    # Single-word command example
-    class CommandArgs(AutoCLI.CommonArgs):
-        name: str = param("default", l="--name", s="-n")
-    
-    def run_command(self, args):
-        print(f"Name: {args.name}")
-        
-    # Two-word command example
-    class FooBarArgs(AutoCLI.CommonArgs):
-        option: str = param("default", l="--option")
-    
+    class FooBarArgs(BaseModel):
+        option: str = param("x", l="--option")
+
+    # Uses FooBarArgs by naming convention
     def run_foo_bar(self, args):
-        print(f"Option: {args.option}")
+        print(args.option)
 ```
 
 
-### Resolution Priority
-
-pydantic-autocli uses the following priority order to determine which argument class to use:
-
-1. Type annotation on the method parameter
-2. Naming convention (CommandArgs class for run_command method)
-3. Fall back to CommonArgs
-
-When both naming convention and type annotation could apply to a method, the type annotation takes precedence (as per the priority above). In such cases, a warning is displayed about the conflict:
-
-```python
-class MyCLI(AutoCLI):
-    # Args class that follows naming convention
-    class CommandArgs(BaseModel):
-        name: str = param("default", l="--name")
-    
-    # Different args class specified by type annotation
-    class CustomArgs(BaseModel):
-        value: int = param(42, l="--value")
-    
-    # Type annotation takes precedence over naming convention
-    # A warning will be displayed about the conflict
-    def run_command(self, args: CustomArgs):
-        # Uses CustomArgs even though CommandArgs exists
-        print(f"Value: {args.value}")
-        return True
-```
-
-This command will use `CustomArgs` (from type annotation) instead of `CommandArgs` (from naming convention), with a warning about the detected conflict.
-
-
-## Development and Testing
+## Development
 
 ```bash
-# Install all dependencies
-uv sync
-
-# Run tests
-uv run pytest
-
-# Run tests with coverage
-uv run task coverage
-```
-
-## Examples
-
-To run the example CLI:
-
-```bash
-python examples/example.py greet --verbose
-
-# Or using taskipy
-uv run task example file --file README.md
+uv sync                  # Install dependencies
+uv run task test         # Run tests
+uv run task coverage     # Run tests with coverage
+uv run task lint         # Lint code
+uv run task example      # Run example CLI
 ```
 
 ## Claude Code Integration
