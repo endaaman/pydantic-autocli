@@ -21,6 +21,7 @@ jobs:
       uses: astral-sh/setup-uv@v3
       with:
         version: "latest"
+        enable-cache: true
 
     - name: Set up Python ${{ matrix.python-version }}
       run: uv python install ${{ matrix.python-version }}
@@ -42,11 +43,12 @@ jobs:
       run: uv run pytest
 
     - name: Run tests with coverage
-      run: uv run task coverage
+      run: uv run pytest --cov=pydantic_autocli --cov-report=xml --cov-report=term-missing
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v4
+      uses: codecov/codecov-action@v5
       with:
+        files: ./coverage.xml
         fail_ci_if_error: false
         verbose: true
       env:
@@ -64,6 +66,7 @@ jobs:
       uses: astral-sh/setup-uv@v3
       with:
         version: "latest"
+        enable-cache: true
 
     - name: Set up Python
       run: uv python install 3.12
